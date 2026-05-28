@@ -1,0 +1,11 @@
+name: ai-company
+version: 1.0.0
+description: "AI Company orchestration plugin — 5 tools (company_start, company_dispatch, company_status, company_config, company_report) for managing multi-wave AI development sessions with persistent SQLite state and automatic context passing between waves."
+author: NousResearch
+kind: backend
+provides_tools:
+  - company_start
+  - company_dispatch
+  - company_status
+  - company_config
+  - company_report
