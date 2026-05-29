@@ -485,6 +485,45 @@ class CompanySession:
             "all_files_created": sorted(all_files),
         }
 
+    def list_sessions(
+        self,
+        project_path: str | None = None,
+        status: str | None = None,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        """List sessions with optional filters, newest first."""
+        query = "SELECT * FROM sessions WHERE 1=1"
+        params: list[Any] = []
+
+        if project_path:
+            query += " AND project_path LIKE ?"
+            params.append(f"%{project_path}%")
+        if status:
+            query += " AND status = ?"
+            params.append(status)
+
+        query += " ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+
+        rows = self.conn.execute(query, params).fetchall()
+        return [dict(r) for r in rows]
+
+    def delete_session(self, session_id: str) -> None:
+        """Delete a session and all associated waves and context data."""
+        # Delete context store entries first (FK)
+        self.conn.execute(
+            "DELETE FROM context_store WHERE session_id = ?", (session_id,)
+        )
+        # Delete waves
+        self.conn.execute(
+            "DELETE FROM waves WHERE session_id = ?", (session_id,)
+        )
+        # Delete session
+        self.conn.execute(
+            "DELETE FROM sessions WHERE id = ?", (session_id,)
+        )
+        self.conn.commit()
+
 
 # ---------------------------------------------------------------------------
 # ContextStore — automatic context passing between waves

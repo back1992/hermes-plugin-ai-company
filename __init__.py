@@ -1,6 +1,6 @@
 """AI Company orchestration plugin — bundled, auto-loaded.
 
-Registers 5 tools into the ``ai_company`` toolset for managing multi-wave
+Registers 7 tools into the ``ai_company`` toolset for managing multi-wave
 AI development sessions. Each session tracks waves (PM, Coder, QA, Reviewer,
 Fix) with persistent SQLite storage and automatic context passing between waves.
 
@@ -11,19 +11,42 @@ the context pack, then calls delegate_task with that context.
 
 from __future__ import annotations
 
-from .tools import (
-    COMPANY_CONFIG_SCHEMA,
-    COMPANY_DISPATCH_SCHEMA,
-    COMPANY_REPORT_SCHEMA,
-    COMPANY_START_SCHEMA,
-    COMPANY_STATUS_SCHEMA,
-    _check_available,
-    _handle_company_config,
-    _handle_company_dispatch,
-    _handle_company_report,
-    _handle_company_start,
-    _handle_company_status,
-)
+try:
+    from .tools import (
+        COMPANY_CONFIG_SCHEMA,
+        COMPANY_DELETE_SCHEMA,
+        COMPANY_DISPATCH_SCHEMA,
+        COMPANY_LIST_SCHEMA,
+        COMPANY_REPORT_SCHEMA,
+        COMPANY_START_SCHEMA,
+        COMPANY_STATUS_SCHEMA,
+        _check_available,
+        _handle_company_config,
+        _handle_company_delete,
+        _handle_company_dispatch,
+        _handle_company_list,
+        _handle_company_report,
+        _handle_company_start,
+        _handle_company_status,
+    )
+except ImportError:
+    from tools import (
+        COMPANY_CONFIG_SCHEMA,
+        COMPANY_DELETE_SCHEMA,
+        COMPANY_DISPATCH_SCHEMA,
+        COMPANY_LIST_SCHEMA,
+        COMPANY_REPORT_SCHEMA,
+        COMPANY_START_SCHEMA,
+        COMPANY_STATUS_SCHEMA,
+        _check_available,
+        _handle_company_config,
+        _handle_company_delete,
+        _handle_company_dispatch,
+        _handle_company_list,
+        _handle_company_report,
+        _handle_company_start,
+        _handle_company_status,
+    )
 
 _TOOLS = (
     ("company_start",    COMPANY_START_SCHEMA,    _handle_company_start,    "🏢"),
@@ -31,6 +54,8 @@ _TOOLS = (
     ("company_status",   COMPANY_STATUS_SCHEMA,   _handle_company_status,   "📊"),
     ("company_config",   COMPANY_CONFIG_SCHEMA,    _handle_company_config,   "⚙️"),
     ("company_report",   COMPANY_REPORT_SCHEMA,   _handle_company_report,   "📑"),
+    ("company_list",     COMPANY_LIST_SCHEMA,     _handle_company_list,     "📂"),
+    ("company_delete",   COMPANY_DELETE_SCHEMA,   _handle_company_delete,   "🗑️"),
 )
 
 

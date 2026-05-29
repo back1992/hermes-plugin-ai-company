@@ -5,13 +5,34 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from .engine import (
-    CompanySession,
-    ContextStore,
-    WAVE_DEFINITIONS,
-    get_connection,
-)
-from tools.registry import tool_error, tool_result
+try:
+    from .engine import (
+        CompanySession,
+        ContextStore,
+        WAVE_DEFINITIONS,
+        get_connection,
+    )
+except ImportError:
+    from engine import (
+        CompanySession,
+        ContextStore,
+        WAVE_DEFINITIONS,
+        get_connection,
+    )
+
+# ---------------------------------------------------------------------------
+# Import fallback: if Hermes core refactors tools.registry, we degrade gracefully.
+# ---------------------------------------------------------------------------
+try:
+    from tools.registry import tool_error, tool_result
+except ImportError:
+    def tool_result(data: Any) -> str:
+        """Fallback: serialize to JSON string."""
+        return json.dumps(data, indent=2, ensure_ascii=False)
+
+    def tool_error(msg: str) -> str:
+        """Fallback: return error JSON."""
+        return json.dumps({"error": msg})
 
 
 def _check_available() -> bool:
@@ -146,6 +167,49 @@ COMPANY_REPORT_SCHEMA: dict[str, Any] = {
     },
 }
 
+COMPANY_LIST_SCHEMA: dict[str, Any] = {
+    "name": "company_list",
+    "description": (
+        "List all AI Company sessions. Optionally filter by project path or status. "
+        "Returns session_id, project, feature, status, and timestamps."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "project_path": {
+                "type": "string",
+                "description": "Filter sessions by project path (substring match)",
+            },
+            "status": {
+                "type": "string",
+                "description": "Filter by status: 'active', 'completed', 'completed_with_failures'",
+            },
+            "limit": {
+                "type": "integer",
+                "description": "Max number of sessions to return (default: 20)",
+            },
+        },
+    },
+}
+
+COMPANY_DELETE_SCHEMA: dict[str, Any] = {
+    "name": "company_delete",
+    "description": (
+        "Delete an AI Company session and all its associated data (waves, context). "
+        "This is irreversible."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "session_id": {
+                "type": "string",
+                "description": "The session ID to delete",
+            },
+        },
+        "required": ["session_id"],
+    },
+}
+
 
 # ---------------------------------------------------------------------------
 # Handlers
@@ -216,11 +280,27 @@ def _handle_company_dispatch(args: dict, **kw) -> str:
                 session_id, wave_number, role, summary, files_created, status
             )
 
+            # Build response
+            response: dict[str, Any] = {
+                "action": "record_result",
+                "session_id": session_id,
+                "wave_number": wave_number,
+                "role": role,
+                "status": status,
+                "wave": wave_result,
+            }
+
             # Check if wave 5 (fix) should be auto-triggered
             if role == "reviewer" and status == "completed":
                 if "CHANGES_REQUESTED" in summary.upper() or "FAIL" in summary.upper():
-                    # Mark fix wave as ready
-                    pass  # Fix wave is already pending, orchestrator can check
+                    response["fix_wave_hint"] = {
+                        "wave": 5,
+                        "reason": "Reviewer requested changes — dispatch Wave 5 (Fix) to resolve issues.",
+                        "dispatch_args": {
+                            "session_id": session_id,
+                            "wave_number": 5,
+                        },
+                    }
 
             # If all waves done, update session status
             all_waves = session_mgr.get_all_waves(session_id)
@@ -229,18 +309,11 @@ def _handle_company_dispatch(args: dict, **kw) -> str:
             )
             if all_done:
                 has_failures = any(w["status"] == "failed" for w in all_waves)
-                session_mgr.update_session_status(
-                    session_id, "completed_with_failures" if has_failures else "completed"
-                )
+                final_status = "completed_with_failures" if has_failures else "completed"
+                session_mgr.update_session_status(session_id, final_status)
+                response["session_status"] = final_status
 
-            return tool_result({
-                "action": "record_result",
-                "session_id": session_id,
-                "wave_number": wave_number,
-                "role": role,
-                "status": status,
-                "wave": wave_result,
-            })
+            return tool_result(response)
 
         # Otherwise, build context pack for dispatch
         role = args.get("role")
@@ -410,3 +483,47 @@ def _handle_company_report(args: dict, **kw) -> str:
         return tool_result(report)
     except Exception as exc:
         return tool_error(f"Report generation failed: {type(exc).__name__}: {exc}")
+
+
+def _handle_company_list(args: dict, **kw) -> str:
+    """List all sessions with optional filters."""
+    project_path = str(args.get("project_path") or "").strip()
+    status_filter = str(args.get("status") or "").strip()
+    limit = int(args.get("limit") or 20)
+
+    try:
+        session_mgr = CompanySession()
+        sessions = session_mgr.list_sessions(
+            project_path=project_path or None,
+            status=status_filter or None,
+            limit=limit,
+        )
+        return tool_result({
+            "total": len(sessions),
+            "sessions": sessions,
+        })
+    except Exception as exc:
+        return tool_error(f"List sessions failed: {type(exc).__name__}: {exc}")
+
+
+def _handle_company_delete(args: dict, **kw) -> str:
+    """Delete a session and all its associated data."""
+    session_id = str(args.get("session_id") or "").strip()
+    if not session_id:
+        return tool_error("session_id is required")
+
+    try:
+        session_mgr = CompanySession()
+        session = session_mgr.get_session(session_id)
+        if not session:
+            return tool_error(f"Session '{session_id}' not found")
+
+        session_mgr.delete_session(session_id)
+        return tool_result({
+            "action": "deleted",
+            "session_id": session_id,
+            "project_path": session["project_path"],
+            "feature_name": session["feature_name"],
+        })
+    except Exception as exc:
+        return tool_error(f"Delete session failed: {type(exc).__name__}: {exc}")
