@@ -1,6 +1,6 @@
 """AI Company orchestration plugin — bundled, auto-loaded.
 
-Registers 7 tools into the ``ai_company`` toolset for managing multi-wave
+Registers 8 tools into the ``ai_company`` toolset for managing multi-wave
 AI development sessions. Each session tracks waves (PM, Coder, QA, Reviewer,
 Fix) with persistent SQLite storage and automatic context passing between waves.
 

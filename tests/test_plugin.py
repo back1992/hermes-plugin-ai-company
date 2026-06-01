@@ -489,3 +489,13 @@ class TestFullLifecycle:
         report = json.loads(_handle_company_report({"session_id": sid}))
         assert len(report["waves"]) == 6
         assert "auth.py" in report["all_files_created"]
+
+    def test_company_create_issue_missing_title(self):
+        from tools import _handle_company_create_issue
+        result = json.loads(_handle_company_create_issue({"title": "", "description": "test"}))
+        assert "error" in result
+
+    def test_company_create_issue_missing_description(self):
+        from tools import _handle_company_create_issue
+        result = json.loads(_handle_company_create_issue({"title": "test", "description": ""}))
+        assert "error" in result
