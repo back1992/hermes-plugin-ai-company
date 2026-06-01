@@ -14,6 +14,7 @@ from __future__ import annotations
 try:
     from .tools import (
         COMPANY_CONFIG_SCHEMA,
+        COMPANY_CREATE_ISSUE_SCHEMA,
         COMPANY_DELETE_SCHEMA,
         COMPANY_DISPATCH_SCHEMA,
         COMPANY_LIST_SCHEMA,
@@ -22,6 +23,7 @@ try:
         COMPANY_STATUS_SCHEMA,
         _check_available,
         _handle_company_config,
+        _handle_company_create_issue,
         _handle_company_delete,
         _handle_company_dispatch,
         _handle_company_list,
@@ -32,6 +34,7 @@ try:
 except ImportError:
     from tools import (
         COMPANY_CONFIG_SCHEMA,
+        COMPANY_CREATE_ISSUE_SCHEMA,
         COMPANY_DELETE_SCHEMA,
         COMPANY_DISPATCH_SCHEMA,
         COMPANY_LIST_SCHEMA,
@@ -40,6 +43,7 @@ except ImportError:
         COMPANY_STATUS_SCHEMA,
         _check_available,
         _handle_company_config,
+        _handle_company_create_issue,
         _handle_company_delete,
         _handle_company_dispatch,
         _handle_company_list,
@@ -56,6 +60,7 @@ _TOOLS = (
     ("company_report",   COMPANY_REPORT_SCHEMA,   _handle_company_report,   "📑"),
     ("company_list",     COMPANY_LIST_SCHEMA,     _handle_company_list,     "📂"),
     ("company_delete",   COMPANY_DELETE_SCHEMA,   _handle_company_delete,   "🗑️"),
+    ("company_create_issue", COMPANY_CREATE_ISSUE_SCHEMA, _handle_company_create_issue, "🐛"),
 )
 
 

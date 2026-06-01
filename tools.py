@@ -527,3 +527,94 @@ def _handle_company_delete(args: dict, **kw) -> str:
         })
     except Exception as exc:
         return tool_error(f"Delete session failed: {type(exc).__name__}: {exc}")
+
+
+# ---------------------------------------------------------------------------
+# Linear Issue Creation (for agents to report bugs)
+# ---------------------------------------------------------------------------
+
+COMPANY_CREATE_ISSUE_SCHEMA: dict[str, Any] = {
+    "name": "company_create_issue",
+    "description": (
+        "Create a Linear issue when an agent discovers a bug, security issue, or quality problem. "
+        "Includes dedup check to avoid creating duplicate issues. "
+        "Returns the created issue identifier and URL."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "title": {
+                "type": "string",
+                "description": "Issue title (e.g., '[QA] Test failure in auth flow' or '[Review] SQL injection in /api/users')",
+            },
+            "description": {
+                "type": "string",
+                "description": "Detailed description with context, steps to reproduce, affected files. Markdown supported.",
+            },
+            "priority": {
+                "type": "integer",
+                "description": "1=Urgent, 2=High, 3=Medium, 4=Low (default: 3)",
+            },
+            "team": {
+                "type": "string",
+                "description": "Team key: LIN (studio) or TRA (trade_bot). Default: LIN",
+            },
+            "labels": {
+                "type": "string",
+                "description": "Comma-separated label names (e.g., 'bug,security')",
+            },
+            "session_id": {
+                "type": "string",
+                "description": "AI Company session ID for traceability",
+            },
+        },
+        "required": ["title", "description"],
+    },
+}
+
+
+def _handle_company_create_issue(args: dict, **kw) -> str:
+    """Create a Linear issue from an agent finding."""
+    import subprocess
+
+    title = str(args.get("title") or "").strip()
+    description = str(args.get("description") or "").strip()
+    priority = int(args.get("priority") or 3)
+    team = str(args.get("team") or "LIN").strip()
+    labels = str(args.get("labels") or "").strip()
+    session_id = str(args.get("session_id") or "").strip()
+
+    if not title:
+        return tool_error("title is required")
+    if not description:
+        return tool_error("description is required")
+
+    script = os.path.expanduser(
+        "~/.hermes/skills/productivity/linear/scripts/linear_create_issue.py"
+    )
+    if not os.path.exists(script):
+        return tool_error(f"Script not found: {script}")
+
+    cmd = [
+        "python3", script,
+        "--title", title,
+        "--description", description,
+        "--priority", str(priority),
+        "--team", team,
+        "--dedup",
+    ]
+    if labels:
+        cmd.extend(["--labels", labels])
+    if session_id:
+        cmd.extend(["--session-id", session_id])
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        if result.returncode == 0:
+            return tool_result(json.loads(result.stdout))
+        else:
+            return tool_error(result.stderr or result.stdout or "Unknown error")
+    except subprocess.TimeoutExpired:
+        return tool_error("Linear API call timed out")
+    except Exception as exc:
+        return tool_error(f"Failed: {type(exc).__name__}: {exc}")

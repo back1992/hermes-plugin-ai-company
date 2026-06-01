@@ -11,3 +11,4 @@ provides_tools:
   - company_report
   - company_list
   - company_delete
+  - company_create_issue
