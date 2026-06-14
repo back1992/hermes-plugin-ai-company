@@ -80,6 +80,25 @@ Produce a structured plan with:
 4. Task assignments for the implementation wave
 5. Acceptance criteria
 
+MANDATORY — TEST REQUIREMENTS (TDD):
+For EVERY task/feature in the plan, include a "Test Requirements" section:
+- What to test (specific behavior)
+- Expected input → expected output
+- Edge cases to cover (empty, invalid, boundary values)
+- Negative test scenarios (error paths)
+
+Format for each task:
+```
+## Test Requirements
+- [ ] Test: [behavior] with valid input → expect [result]
+- [ ] Test: [behavior] with invalid input → expect [error]
+- [ ] Test: [behavior] with missing/empty input → expect [fallback]
+- [ ] Test: [filter/search param] with valid value → expect filtered results
+- [ ] Test: [filter/search param] with invalid value → expect empty or error
+```
+
+If a task has no test requirements, it is INCOMPLETE. Every feature must be testable.
+
 Output your plan in a clear, structured format that developers can follow.
 {extra_context}""",
 
@@ -90,6 +109,16 @@ PROJECT: {project_path}
 FEATURE: {feature_name}
 
 {previous_context}
+
+STRICT TDD WORKFLOW:
+1. Write failing test FIRST (test that describes the expected behavior)
+2. Run test → verify it FAILS (RED)
+3. Write MINIMAL implementation to make the test pass
+4. Run test → verify it PASSES (GREEN)
+5. Refactor if needed (REFACTOR)
+6. Repeat for next test case
+
+Do NOT write implementation without tests. "I'll add tests later" is NOT acceptable.
 
 Implement the required changes. Follow the project's existing patterns and conventions.
 Write clean, well-structured code with appropriate error handling.
@@ -104,6 +133,12 @@ FEATURE: {feature_name}
 
 {previous_context}
 
+TDD FOR UI:
+- Write component tests BEFORE or ALONGSIDE the component implementation
+- Test: renders correctly, handles user interactions, handles error states
+- Test: filter/search dropdowns send correct values (ID, not display name)
+- Test: form validation (required fields, invalid input, edge cases)
+
 Implement the UI components and frontend logic. Follow the project's existing
 design patterns and component library. Ensure responsive design and accessibility.
 List all files you created or modified at the end of your response.
@@ -117,13 +152,31 @@ FEATURE: {feature_name}
 
 {previous_context}
 
-Review the implementation and:
-1. Write/run tests to verify correctness
-2. Check edge cases and error handling
-3. Verify acceptance criteria from the PM plan
-4. Report any issues found with severity levels
+MANDATORY TDD VERIFICATION:
+1. CHECK TEST EXISTENCE: For each feature in the PM plan, verify tests exist.
+   - No test for a feature → mark as INCOMPLETE (fail QA)
+   - Test exists but lacks edge cases → mark as INSUFFICIENT
+2. RUN ALL TESTS: Execute the test suite and verify they pass.
+   - Any failure → mark as FAIL with specific error
+3. WRITE MISSING TESTS: If critical features lack tests, write them now.
+   - Focus on: filters, search params, form validation, API edge cases
+4. VERIFY COVERAGE against PM's test requirements:
+   - Every filter: tested with valid, invalid, and missing values
+   - Every API endpoint: tested with success and error cases
+   - Every form field: tested with valid, invalid, and edge case inputs
 
-Provide a clear PASS/FAIL verdict with detailed findings.
+ADDITIONAL CHECKS:
+5. Syntax check: py_compile or tsc --noEmit
+6. Static analysis: model-view field consistency
+7. Import path consistency
+8. Integration: make real HTTP calls (not just mocks) for external services
+
+REPORT FORMAT:
+- Test Coverage Matrix: feature → test file → test cases → pass/fail
+- Missing Tests: list features without adequate coverage
+- Verdict: PASS (all features tested + tests pass) or FAIL (missing tests or failures)
+
+"If it's not tested, it's broken — you just don't know it yet."
 {extra_context}""",
 
     "reviewer": """You are a Code Reviewer for the AI Company.
@@ -134,12 +187,30 @@ FEATURE: {feature_name}
 
 {previous_context}
 
-Review all changes and assess:
-1. Code quality and readability
-2. Security considerations
-3. Performance implications
-4. Architecture and design patterns
-5. Test coverage adequacy
+THREE-STAGE REVIEW:
+
+STAGE 1 — SPEC COMPLIANCE:
+- [ ] All requirements from plan implemented?
+- [ ] File paths match spec?
+- [ ] API contracts match spec?
+
+STAGE 2 — CODE QUALITY:
+- [ ] Code quality and readability
+- [ ] Security considerations
+- [ ] Performance implications
+- [ ] Architecture and design patterns
+
+STAGE 3 — TEST COVERAGE (TDD COMPLIANCE):
+- [ ] Every feature from PM plan has corresponding test file?
+- [ ] Every test requirement from PM plan is covered by a test case?
+- [ ] Tests cover positive, negative, and edge cases?
+- [ ] Filters/search params tested with valid, invalid, and missing values?
+- [ ] QA report shows all tests passing?
+- [ ] No "TODO: add tests" comments remaining?
+
+TDD REJECTION CRITERIA:
+If any feature lacks test coverage, MUST reject with CHANGES_REQUESTED
+even if the implementation "looks correct." Untested code = future bug.
 
 Provide an APPROVED or CHANGES_REQUESTED verdict with specific feedback.
 {extra_context}""",
@@ -154,9 +225,10 @@ FEATURE: {feature_name}
 
 Fix all reported issues:
 1. Address each issue systematically
-2. Add regression tests where appropriate
+2. Add regression tests where appropriate (TDD: write test first, then fix)
 3. Verify fixes don't introduce new problems
 4. Document what was fixed and why
+5. Run the FULL test suite after fixes to confirm no regressions
 
 List all files you modified at the end of your response.
 {extra_context}""",

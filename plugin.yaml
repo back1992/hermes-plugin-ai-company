@@ -1,6 +1,6 @@
 name: ai-company
-version: 1.1.0
-description: "AI Company orchestration plugin — 7 tools for managing multi-wave AI development sessions with persistent SQLite state and automatic context passing between waves."
+version: 1.2.0
+description: "AI Company orchestration plugin — 7 tools for managing multi-wave AI development sessions with TDD-enforced workflow, persistent SQLite state and automatic context passing between waves."
 author: back1992
 kind: backend
 provides_tools:
