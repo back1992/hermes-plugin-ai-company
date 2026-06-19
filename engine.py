@@ -73,12 +73,26 @@ FEATURE: {feature_name}
 
 {previous_context}
 
-Produce a structured plan with:
-1. Requirements breakdown
-2. Technical design decisions
-3. File changes needed (list files to create/modify)
-4. Task assignments for the implementation wave
-5. Acceptance criteria
+You MUST produce TWO documents:
+
+A) DESIGN DOCUMENT (save to docs/design/<feature-name>.md):
+   - Architecture overview and data flow diagrams
+   - API contracts (request/response schemas)
+   - Component interaction diagrams
+   - Error handling strategy
+   - Performance considerations
+   - Security considerations
+
+B) IMPLEMENTATION PLAN (save to plans/<feature-name>.md):
+   1. Requirements breakdown
+   2. Technical design decisions (reference design doc)
+   3. File changes needed (list files to create/modify)
+   4. Task assignments for the implementation wave
+   5. Acceptance criteria
+
+IMPORTANT: The design document must be written BEFORE the implementation plan.
+Developers should be able to read the design doc to understand the architecture
+without reading the plan.
 
 MANDATORY — TEST REQUIREMENTS (TDD):
 For EVERY task/feature in the plan, include a "Test Requirements" section:
@@ -189,10 +203,12 @@ FEATURE: {feature_name}
 
 THREE-STAGE REVIEW:
 
-STAGE 1 — SPEC COMPLIANCE:
+STAGE 1 — SPEC & DESIGN COMPLIANCE:
+- [ ] Design document exists in docs/design/?
+- [ ] Design document covers architecture, API contracts, data flow?
 - [ ] All requirements from plan implemented?
 - [ ] File paths match spec?
-- [ ] API contracts match spec?
+- [ ] API contracts match spec and design doc?
 
 STAGE 2 — CODE QUALITY:
 - [ ] Code quality and readability
