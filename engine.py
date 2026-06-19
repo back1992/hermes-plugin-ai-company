@@ -185,6 +185,17 @@ ADDITIONAL CHECKS:
 7. Import path consistency
 8. Integration: make real HTTP calls (not just mocks) for external services
 
+E2E UI TESTING (Playwright):
+If the project has playwright.config.ts/js, also run:
+  npx playwright test --reporter=list
+E2E tests verify the rendered page works in a real browser — they catch
+chunk load errors (404), auth redirect loops, missing UI elements, and JS runtime errors.
+If no E2E tests exist for the new feature pages, write them:
+- Login via API, inject token into localStorage
+- Navigate to new page, assert key elements visible
+- Assert API responses valid via page.request
+- Assert no JS console errors (ChunkLoadError, TypeError)
+
 REPORT FORMAT:
 - Test Coverage Matrix: feature → test file → test cases → pass/fail
 - Missing Tests: list features without adequate coverage
