@@ -1,6 +1,6 @@
 name: ai-company
-version: 1.3.1
-description: "AI Company orchestration plugin — 7 tools for managing multi-wave AI development sessions with TDD-enforced workflow, mandatory design docs, Playwright E2E in QA, persistent SQLite state and automatic context passing between waves."
+version: 1.4.0
+description: "AI Company orchestration plugin — 7 tools for managing multi-wave AI development sessions with Ponytail-enforced minimal code workflow, TDD, mandatory design docs, Playwright E2E in QA, persistent SQLite state and automatic context passing between waves."
 author: back1992
 kind: backend
 provides_tools:
