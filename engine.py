@@ -74,7 +74,7 @@ except ImportError:
 # Database initialization
 # ---------------------------------------------------------------------------
 def _init_db(conn: sqlite3.Connection) -> None:
-    """Create tables if they don't exist."""
+    """Create tables if they don't exist (v2.0 schema)."""
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS sessions (
             id TEXT PRIMARY KEY,
@@ -83,7 +83,10 @@ def _init_db(conn: sqlite3.Connection) -> None:
             status TEXT NOT NULL DEFAULT 'active',
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
-            config TEXT DEFAULT '{}'
+            config TEXT DEFAULT '{}',
+            plan_text TEXT DEFAULT '',
+            task_count INTEGER DEFAULT 0,
+            schema_version INTEGER DEFAULT 2
         );
 
         CREATE TABLE IF NOT EXISTS waves (
@@ -94,6 +97,23 @@ def _init_db(conn: sqlite3.Connection) -> None:
             status TEXT NOT NULL DEFAULT 'pending',
             summary TEXT DEFAULT '',
             files_created TEXT DEFAULT '[]',
+            started_at TEXT,
+            completed_at TEXT,
+            FOREIGN KEY (session_id) REFERENCES sessions(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            task_index INTEGER NOT NULL,
+            description TEXT NOT NULL,
+            files TEXT DEFAULT '[]',
+            status TEXT NOT NULL DEFAULT 'pending',
+            implementer_summary TEXT DEFAULT '',
+            reviewer_verdict TEXT DEFAULT '',
+            reviewer_findings TEXT DEFAULT '[]',
+            files_created TEXT DEFAULT '[]',
+            commit_sha TEXT DEFAULT '',
             started_at TEXT,
             completed_at TEXT,
             FOREIGN KEY (session_id) REFERENCES sessions(id)
@@ -110,6 +130,7 @@ def _init_db(conn: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_waves_session ON waves(session_id);
         CREATE INDEX IF NOT EXISTS idx_context_session ON context_store(session_id, wave_number);
+        CREATE INDEX IF NOT EXISTS idx_tasks_session ON tasks(session_id);
     """)
     conn.commit()
 
