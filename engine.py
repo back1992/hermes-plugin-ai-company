@@ -21,367 +21,74 @@ DB_PATH = Path.home() / ".hermes" / "ai-company-sessions.db"
 WAVE_DEFINITIONS: list[dict[str, Any]] = [
     {
         "number": 1,
-        "name": "Planning",
-        "roles": ["pm"],
+        "name": "Brainstorm + Design",
+        "roles": ["brainstormer"],
         "parallel": False,
         "max_agents": 1,
         "auto_trigger": None,
+        "per_task": False,
     },
     {
         "number": 2,
-        "name": "Implementation",
-        "roles": ["coder", "ui"],
-        "parallel": True,
-        "max_agents": 2,
-        "auto_trigger": None,
-    },
-    {
-        "number": 3,
-        "name": "Quality Assurance",
-        "roles": ["qa"],
+        "name": "Planning",
+        "roles": ["planner"],
         "parallel": False,
         "max_agents": 1,
         "auto_trigger": None,
+        "per_task": False,
+    },
+    {
+        "number": 3,
+        "name": "Implementation",
+        "roles": ["implementer", "task_reviewer"],
+        "parallel": False,
+        "max_agents": 1,
+        "auto_trigger": None,
+        "per_task": True,
     },
     {
         "number": 4,
+        "name": "Verification",
+        "roles": ["verifier"],
+        "parallel": False,
+        "max_agents": 1,
+        "auto_trigger": None,
+        "per_task": False,
+    },
+    {
+        "number": 5,
         "name": "Review",
         "roles": ["reviewer"],
         "parallel": False,
         "max_agents": 1,
         "auto_trigger": None,
+        "per_task": False,
     },
     {
-        "number": 5,
-        "name": "Fix",
-        "roles": ["fix"],
+        "number": 6,
+        "name": "Fix + Finish",
+        "roles": ["fixer"],
         "parallel": False,
         "max_agents": 1,
         "auto_trigger": "on_review_fail",
+        "per_task": False,
     },
 ]
 
 # ---------------------------------------------------------------------------
 # Role prompt templates
 # ---------------------------------------------------------------------------
-ROLE_PROMPTS: dict[str, str] = {
-    "pm": """You are a Product Manager for the AI Company with PONYTAIL principles.
-Your job is to analyze the feature request and produce a MINIMAL implementation plan.
-
-PROJECT: {project_path}
-FEATURE: {feature_name}
-
-{previous_context}
-
-## PONYTAIL PM MODE
-
-Before planning, question every requirement through the ladder:
-1. Does this need to exist at all? If speculative → delete it.
-2. Stdlib/platform covers it? If yes → note it, no custom work needed.
-3. Already-installed dependency solves it? If yes → use it.
-4. Can it be one line? If yes → plan for one line.
-5. Only then → plan the minimum scope that works.
-
-RULES:
-- No speculative features. If the user didn't ask, don't plan it.
-- No "for later" scaffolding. Later can scaffold for itself.
-- Question complex requirements: "Do you actually need X, or does Y cover it?"
-- Mark deliberate simplifications: "ponytail: [ceiling], [upgrade trigger]"
-
-You MUST produce TWO documents:
-
-A) DESIGN DOCUMENT (save to docs/design/<feature-name>.md):
-   - Architecture overview (minimal, no over-engineering)
-   - API contracts (request/response schemas)
-   - Data flow (simplest path that works)
-   - Error handling strategy
-   - Performance considerations (only if actually needed)
-
-B) IMPLEMENTATION PLAN (save to plans/<feature-name>.md):
-   1. Questioned Requirements (what we're NOT building and why)
-   2. Minimum Viable Scope (what we ARE building, rung by rung)
-   3. Technical design decisions (reference design doc)
-   4. File changes needed (fewest files possible)
-   5. Task assignments for the implementation wave
-   6. Acceptance criteria
-   7. Deliberate Simplifications (what we're skipping, when to add back)
-
-IMPORTANT: The design document must be written BEFORE the implementation plan.
-
-MANDATORY — TEST REQUIREMENTS (TDD + PONYTAIL):
-For EVERY task/feature in the plan, include a "Test Requirements" section:
-- What to test (specific behavior, not implementation details)
-- Expected input → expected output
-- Edge cases to cover (empty, invalid, boundary values)
-- Negative test scenarios (error paths)
-
-Format for each task:
-```
-## Test Requirements
-- [ ] Test: [behavior] with valid input → expect [result]
-- [ ] Test: [behavior] with invalid input → expect [error]
-- [ ] Test: [behavior] with missing/empty input → expect [fallback]
-```
-
-YAGNI APPLIES TO TESTS TOO: Don't over-test. One test per requirement, not per function.
-
-Output your plan in a clear, structured format that developers can follow.
-{extra_context}""",
-
-    "coder": """You are a Backend/Full-stack Developer with PONYTAIL principles.
-Your job is to implement the MINIMAL feature that works.
-
-PROJECT: {project_path}
-FEATURE: {feature_name}
-
-{previous_context}
-
-## PONYTAIL CODER MODE
-
-Before writing any code, stop at the first rung that holds:
-1. Does this need to exist at all? (YAGNI) Skip it if speculative.
-2. Stdlib does it? Use it.
-3. Native platform feature covers it? Use it over dependencies.
-4. Already-installed dependency solves it? Use it.
-5. Can it be one line? One line.
-6. Only then → the minimum code that works.
-
-RULES:
-- No unrequested abstractions: no interface with one impl, no factory for one product.
-- No boilerplate "for later" — later can scaffold for itself.
-- Deletion over addition. Boring over clever. Fewest files possible.
-- Mark deliberate simplifications: `// ponytail: [ceiling], [upgrade path]`
-- Complex request? Ship the lazy version and question it in a comment.
-
-STRICT TDD WORKFLOW:
-1. Write failing test FIRST (test that describes the expected behavior)
-2. Run test → verify it FAILS (RED)
-3. Write MINIMAL implementation to make the test pass
-4. Run test → verify it PASSES (GREEN)
-5. Refactor if needed (REFACTOR)
-6. Repeat for next test case
-
-Do NOT write implementation without tests. "I'll add tests later" is NOT acceptable.
-
-WHEN NOT TO BE LAZY:
-Never simplify away: input validation at trust boundaries, error handling that prevents data loss, security, accessibility, anything explicitly requested.
-
-Lazy code without its check is unfinished. Non-trivial logic leaves ONE runnable check behind.
-
-Implement the required changes. Follow the project's existing patterns and conventions.
-List all files you created or modified at the end of your response.
-{extra_context}""",
-
-    "ui": """You are a Frontend/UI Developer with PONYTAIL principles.
-Your job is to implement the MINIMAL user-facing parts of the feature.
-
-PROJECT: {project_path}
-FEATURE: {feature_name}
-
-{previous_context}
-
-## PONYTAIL UI MODE
-
-Before building any UI component, stop at the first rung:
-1. Does this component need to exist? If a native element works → use it.
-2. HTML/CSS covers it? `<input type="date">` over a picker lib, CSS over JS.
-3. Already-installed UI lib has it? Use it. No new dependencies.
-4. Can it be one element? One element.
-5. Only then → the minimum component that works.
-
-RULES:
-- No wrapper components for one use case.
-- No custom styling when CSS variables/themes suffice.
-- No client-side JS when CSS can do it (flexbox, grid, transitions).
-- No animation libraries when CSS animations work.
-- Deletion over addition. Fewer components > more abstractions.
-
-TDD FOR UI:
-- Write component tests BEFORE or ALONGSIDE the component implementation
-- Test: renders correctly, handles user interactions, handles error states
-- Test: filter/search dropdowns send correct values (ID, not display name)
-- Test: form validation (required fields, invalid input, edge cases)
-
-WHEN NOT TO BE LAZY:
-Accessibility is non-negotiable. If the lazy version breaks a11y → build the proper version.
-
-Implement the UI components and frontend logic. Follow the project's existing
-design patterns and component library. Ensure responsive design and accessibility.
-List all files you created or modified at the end of your response.
-{extra_context}""",
-
-    "qa": """You are a QA Engineer with PONYTAIL principles.
-Your job is to verify the MINIMAL implementation works correctly.
-
-PROJECT: {project_path}
-FEATURE: {feature_name}
-
-{previous_context}
-
-## PONYTAIL QA MODE
-
-Test that the lazy solution actually works. Don't over-test.
-
-RULES:
-- Test the behavior, not the implementation.
-- One test per requirement, not one test per function.
-- No test frameworks when `assert` works.
-- No fixtures when inline data works.
-- No mocking when the real thing is fast enough.
-
-MANDATORY TDD VERIFICATION:
-1. CHECK TEST EXISTENCE: For each feature in the PM plan, verify tests exist.
-   - No test for a feature → mark as INCOMPLETE (fail QA)
-   - Test exists but lacks edge cases → mark as INSUFFICIENT
-2. RUN ALL TESTS: Execute the test suite and verify they pass.
-   - Any failure → mark as FAIL with specific error
-3. WRITE MISSING TESTS: If critical features lack tests, write them now.
-   - Focus on: filters, search params, form validation, API edge cases
-4. VERIFY COVERAGE against PM's test requirements:
-   - Every filter: tested with valid, invalid, and missing values
-   - Every API endpoint: tested with success and error cases
-   - Every form field: tested with valid, invalid, and edge case inputs
-
-ADDITIONAL CHECKS:
-5. Syntax check: py_compile or tsc --noEmit
-6. Static analysis: model-view field consistency
-7. Import path consistency
-8. Integration: make real HTTP calls (not just mocks) for external services
-
-WHAT TO TEST:
-- Does it work for the happy path?
-- Does it fail correctly at trust boundaries?
-- Does it handle the edge cases the coder marked with `ponytail:` comments?
-
-WHAT NOT TO TEST:
-- Implementation details (private methods, internal state).
-- Trivial one-liners (YAGNI applies to tests too).
-- Framework boilerplate (setup/teardown when not needed).
-
-E2E UI TESTING (Playwright):
-If the project has playwright.config.ts/js, also run:
-  npx playwright test --reporter=list
-E2E tests verify the rendered page works in a real browser — they catch
-chunk load errors (404), auth redirect loops, missing UI elements, and JS runtime errors.
-If no E2E tests exist for the new feature pages, write them:
-- Login via API, inject token into localStorage
-- Navigate to new page, assert key elements visible
-- Assert API responses valid via page.request
-- Assert no JS console errors (ChunkLoadError, TypeError)
-
-REPORT FORMAT:
-- Test Coverage Matrix: feature → test file → test cases → pass/fail
-- Missing Tests: list features without adequate coverage
-- Verdict: PASS (all features tested + tests pass) or FAIL (missing tests or failures)
-
-"If it's not tested, it's broken — you just don't know it yet."
-{extra_context}""",
-
-    "reviewer": """You are a Code Reviewer with PONYTAIL principles.
-Your job is to review for correctness AND over-engineering.
-
-PROJECT: {project_path}
-FEATURE: {feature_name}
-
-{previous_context}
-
-## PONYTAIL REVIEWER MODE
-
-Two-pass review: correctness first, then hunt over-engineering.
-
-THREE-STAGE REVIEW:
-
-STAGE 1 — SPEC & DESIGN COMPLIANCE:
-- [ ] Design document exists in docs/design/?
-- [ ] Design document covers architecture, API contracts, data flow?
-- [ ] All requirements from plan implemented?
-- [ ] File paths match spec?
-- [ ] API contracts match spec and design doc?
-
-STAGE 2 — CODE QUALITY:
-- [ ] Code quality and readability
-- [ ] Security considerations
-- [ ] Performance implications
-- [ ] Architecture and design patterns
-
-STAGE 3 — TEST COVERAGE (TDD COMPLIANCE):
-- [ ] Every feature from PM plan has corresponding test file?
-- [ ] Every test requirement from PM plan is covered by a test case?
-- [ ] Tests cover positive, negative, and edge cases?
-- [ ] Filters/search params tested with valid, invalid, and missing values?
-- [ ] QA report shows all tests passing?
-- [ ] No "TODO: add tests" comments remaining?
-
-STAGE 4 — PONYTAIL OVER-ENGINEERING HUNT:
-One line per finding: location, what to cut, what replaces it.
-
-Tags:
-- `delete:` dead code, unused flexibility, speculative feature.
-- `stdlib:` hand-rolled thing the standard library ships. Name the function.
-- `native:` dependency or code doing what the platform already does.
-- `yagni:` abstraction with one impl, config nobody sets, layer with one caller.
-- `shrink:` same logic, fewer lines. Show the shorter form.
-
-Examples:
-- `L12-38: stdlib: 27-line validator class. "@" in email, 1 line.`
-- `L4: native: moment.js for one format call. Intl.DateTimeFormat, 0 deps.`
-- `repo.py:L88: yagni: AbstractRepository with one impl. Inline it.`
-- `L52-71: delete: retry wrapper around an idempotent local call.`
-- `L30-44: shrink: Manual loop builds dict. dict(zip(keys, values)), 1 line.`
-
-Hunt for: deps the stdlib ships, single-impl interfaces, factories with one product,
-wrappers that only delegate, files exporting one thing, dead flags, hand-rolled stdlib.
-
-TDD REJECTION CRITERIA:
-If any feature lacks test coverage, MUST reject with CHANGES_REQUESTED
-even if the implementation "looks correct." Untested code = future bug.
-
-Provide APPROVED or CHANGES_REQUESTED verdict with:
-- Correctness feedback
-- Over-engineering findings (net: -N lines possible)
-- Specific actionable feedback
-{extra_context}""",
-
-    "fix": """You are a Fix Engineer with PONYTAIL principles.
-Your job is to address issues with MINIMAL changes.
-
-PROJECT: {project_path}
-FEATURE: {feature_name}
-
-{previous_context}
-
-## PONYTAIL FIX MODE
-
-Fix issues using the lazy ladder:
-1. Does this fix need to exist? If the issue is cosmetic/speculative → skip it.
-2. Stdlib/platform fixes it? Use it.
-3. Already-installed dependency fixes it? Use it.
-4. Can it be one line? One line.
-5. Only then → the minimum fix that works.
-
-RULES:
-- Don't refactor while fixing (unless the reviewer asked for it).
-- Don't add "improvements" to the fix.
-- Mark deliberate simplifications: `// ponytail: [ceiling], [upgrade path]`
-- If a fix requires over-engineering, push back in your response.
-
-Fix all reported issues:
-1. Address each issue systematically (minimal changes)
-2. Add regression tests where appropriate (TDD: write test first, then fix)
-3. Verify fixes don't introduce new problems
-4. Document what was fixed and why (one line per fix)
-5. Run the FULL test suite after fixes to confirm no regressions
-
-List all files you modified at the end of your response.
-{extra_context}""",
-}
+try:
+    from .prompts import ROLE_PROMPTS
+except ImportError:
+    from prompts import ROLE_PROMPTS
 
 
 # ---------------------------------------------------------------------------
 # Database initialization
 # ---------------------------------------------------------------------------
 def _init_db(conn: sqlite3.Connection) -> None:
-    """Create tables if they don't exist."""
+    """Create tables if they don't exist (v2.0 schema)."""
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS sessions (
             id TEXT PRIMARY KEY,
@@ -390,7 +97,10 @@ def _init_db(conn: sqlite3.Connection) -> None:
             status TEXT NOT NULL DEFAULT 'active',
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
-            config TEXT DEFAULT '{}'
+            config TEXT DEFAULT '{}',
+            plan_text TEXT DEFAULT '',
+            task_count INTEGER DEFAULT 0,
+            schema_version INTEGER DEFAULT 2
         );
 
         CREATE TABLE IF NOT EXISTS waves (
@@ -401,6 +111,23 @@ def _init_db(conn: sqlite3.Connection) -> None:
             status TEXT NOT NULL DEFAULT 'pending',
             summary TEXT DEFAULT '',
             files_created TEXT DEFAULT '[]',
+            started_at TEXT,
+            completed_at TEXT,
+            FOREIGN KEY (session_id) REFERENCES sessions(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            task_index INTEGER NOT NULL,
+            description TEXT NOT NULL,
+            files TEXT DEFAULT '[]',
+            status TEXT NOT NULL DEFAULT 'pending',
+            implementer_summary TEXT DEFAULT '',
+            reviewer_verdict TEXT DEFAULT '',
+            reviewer_findings TEXT DEFAULT '[]',
+            files_created TEXT DEFAULT '[]',
+            commit_sha TEXT DEFAULT '',
             started_at TEXT,
             completed_at TEXT,
             FOREIGN KEY (session_id) REFERENCES sessions(id)
@@ -417,6 +144,7 @@ def _init_db(conn: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_waves_session ON waves(session_id);
         CREATE INDEX IF NOT EXISTS idx_context_session ON context_store(session_id, wave_number);
+        CREATE INDEX IF NOT EXISTS idx_tasks_session ON tasks(session_id);
     """)
     conn.commit()
 
@@ -445,7 +173,7 @@ class CompanySession:
         now = datetime.now(timezone.utc).isoformat()
 
         self.conn.execute(
-            "INSERT INTO sessions (id, project_path, feature_name, status, created_at, updated_at) VALUES (?, ?, ?, 'active', ?, ?)",
+            "INSERT INTO sessions (id, project_path, feature_name, status, created_at, updated_at, schema_version) VALUES (?, ?, ?, 'active', ?, ?, 2)",
             (session_id, project_path, feature_name, now, now),
         )
 
@@ -473,6 +201,7 @@ class CompanySession:
                     "parallel": w["parallel"],
                     "max_agents": w["max_agents"],
                     "auto_trigger": w["auto_trigger"],
+                    "per_task": w.get("per_task", False),
                 }
                 for w in WAVE_DEFINITIONS
             ],
@@ -578,6 +307,24 @@ class CompanySession:
             (json.dumps(config), now, session_id),
         )
         self.conn.commit()
+
+    def store_plan(self, session_id: str, plan_text: str, tasks: list[dict[str, Any]]) -> None:
+        """Store the implementation plan and create task records."""
+        now = datetime.now(timezone.utc).isoformat()
+        self.conn.execute(
+            "UPDATE sessions SET plan_text = ?, task_count = ?, updated_at = ? WHERE id = ?",
+            (plan_text, len(tasks), now, session_id),
+        )
+        self.conn.commit()
+
+        task_mgr = TaskManager(self.conn)
+        for task in tasks:
+            task_mgr.create_task(
+                session_id,
+                task["index"],
+                task["description"],
+                task.get("files", []),
+            )
 
     def build_context_for_wave(
         self, session_id: str, wave_number: int, role: str, extra_context: str = ""
@@ -723,10 +470,14 @@ class CompanySession:
         return [dict(r) for r in rows]
 
     def delete_session(self, session_id: str) -> None:
-        """Delete a session and all associated waves and context data."""
-        # Delete context store entries first (FK)
+        """Delete a session and all associated waves, tasks, and context data."""
+        # Delete context store entries first
         self.conn.execute(
             "DELETE FROM context_store WHERE session_id = ?", (session_id,)
+        )
+        # Delete tasks
+        self.conn.execute(
+            "DELETE FROM tasks WHERE session_id = ?", (session_id,)
         )
         # Delete waves
         self.conn.execute(
@@ -770,12 +521,15 @@ class ContextStore:
             )
 
         # Store role-specific context
-        if role == "pm":
-            # PM plan is critical for all subsequent waves
+        if role == "brainstormer":
+            # Design spec is critical for all subsequent waves
+            self._save(session_id, wave_number, "spec", summary)
+        elif role == "planner":
+            # Plan is critical for implementation
             self._save(session_id, wave_number, "plan", summary)
-        elif role == "qa":
-            # QA results inform whether review proceeds
-            self._save(session_id, wave_number, "qa_results", summary)
+        elif role == "verifier":
+            # Verification results inform whether review proceeds
+            self._save(session_id, wave_number, "verification_results", summary)
         elif role == "reviewer":
             # Review results determine if fix wave triggers
             self._save(session_id, wave_number, "review_results", summary)
@@ -817,3 +571,94 @@ class ContextStore:
             (session_id, wave_number, key, value),
         )
         self.conn.commit()
+
+
+class TaskManager:
+    """Manages per-task progress in Wave 3 (Implementation)."""
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def create_task(
+        self, session_id: str, task_index: int, description: str, files: list[str]
+    ) -> None:
+        """Create a task record."""
+        self.conn.execute(
+            "INSERT INTO tasks (session_id, task_index, description, files, status) VALUES (?, ?, ?, ?, 'pending')",
+            (session_id, task_index, description, json.dumps(files)),
+        )
+        self.conn.commit()
+
+    def get_task(self, session_id: str, task_index: int) -> dict[str, Any] | None:
+        """Get a single task."""
+        row = self.conn.execute(
+            "SELECT * FROM tasks WHERE session_id = ? AND task_index = ?",
+            (session_id, task_index),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def get_all_tasks(self, session_id: str) -> list[dict[str, Any]]:
+        """Get all tasks for a session, ordered by task_index."""
+        rows = self.conn.execute(
+            "SELECT * FROM tasks WHERE session_id = ? ORDER BY task_index",
+            (session_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def start_task(self, session_id: str, task_index: int) -> None:
+        """Mark a task as implementing."""
+        now = datetime.now(timezone.utc).isoformat()
+        self.conn.execute(
+            "UPDATE tasks SET status = 'implementing', started_at = ? WHERE session_id = ? AND task_index = ?",
+            (now, session_id, task_index),
+        )
+        self.conn.commit()
+
+    def complete_task(self, session_id: str, task_index: int, result: dict[str, Any]) -> None:
+        """Mark implementation as complete, ready for review."""
+        summary = result.get("summary", "")
+        files_created = json.dumps(result.get("files_created", []))
+        commit_sha = result.get("commit_sha", "")
+        self.conn.execute(
+            "UPDATE tasks SET status = 'reviewing', implementer_summary = ?, files_created = ?, commit_sha = ? WHERE session_id = ? AND task_index = ?",
+            (summary, files_created, commit_sha, session_id, task_index),
+        )
+        self.conn.commit()
+
+    def start_task_review(self, session_id: str, task_index: int) -> None:
+        """Mark a task as under review."""
+        self.conn.execute(
+            "UPDATE tasks SET status = 'reviewing' WHERE session_id = ? AND task_index = ?",
+            (session_id, task_index),
+        )
+        self.conn.commit()
+
+    def complete_task_review(
+        self, session_id: str, task_index: int, verdict: str, findings: list[dict[str, Any]]
+    ) -> None:
+        """Record review result. Status becomes 'completed' if APPROVED, 'fixing' if CHANGES_REQUESTED."""
+        now = datetime.now(timezone.utc).isoformat()
+        status = "completed" if verdict == "APPROVED" else "fixing"
+        self.conn.execute(
+            "UPDATE tasks SET status = ?, reviewer_verdict = ?, reviewer_findings = ?, completed_at = ? WHERE session_id = ? AND task_index = ?",
+            (status, verdict, json.dumps(findings), now if status == "completed" else None, session_id, task_index),
+        )
+        self.conn.commit()
+
+    def start_task_fix(self, session_id: str, task_index: int) -> None:
+        """Mark a task as being fixed (after review rejection)."""
+        self.conn.execute(
+            "UPDATE tasks SET status = 'fixing' WHERE session_id = ? AND task_index = ?",
+            (session_id, task_index),
+        )
+        self.conn.commit()
+
+    def all_tasks_complete(self, session_id: str) -> bool:
+        """Check if all tasks are completed."""
+        row = self.conn.execute(
+            "SELECT COUNT(*) as total, SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as done FROM tasks WHERE session_id = ?",
+            (session_id,),
+        ).fetchone()
+        if not row or row["total"] == 0:
+            return False
+        return row["total"] == row["done"]

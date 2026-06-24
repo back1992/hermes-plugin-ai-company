@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import Any
 
 try:
@@ -210,6 +211,36 @@ COMPANY_DELETE_SCHEMA: dict[str, Any] = {
     },
 }
 
+COMPANY_DISPATCH_TASK_SCHEMA: dict[str, Any] = {
+    "name": "company_dispatch_task",
+    "description": (
+        "Dispatch a single implementation task from the plan. "
+        "Without 'result': returns the implementer prompt for the task. "
+        "With 'result': records the implementation result and returns the task_reviewer prompt."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "session_id": {
+                "type": "string",
+                "description": "The session ID",
+            },
+            "task_index": {
+                "type": "integer",
+                "description": "0-based index into the plan's task list",
+            },
+            "result": {
+                "type": "object",
+                "description": (
+                    "Record task result: {status: done|done_with_concerns|blocked, "
+                    "summary: string, files_created: list, commit_sha: string (optional)}"
+                ),
+            },
+        },
+        "required": ["session_id", "task_index"],
+    },
+}
+
 
 # ---------------------------------------------------------------------------
 # Handlers
@@ -249,8 +280,8 @@ def _handle_company_dispatch(args: dict, **kw) -> str:
     except (TypeError, ValueError):
         return tool_error("wave_number must be an integer")
 
-    if wave_number < 1 or wave_number > 5:
-        return tool_error("wave_number must be between 1 and 5")
+    if wave_number < 1 or wave_number > 6:
+        return tool_error("wave_number must be between 1 and 6")
 
     try:
         session_mgr = CompanySession()
@@ -290,15 +321,15 @@ def _handle_company_dispatch(args: dict, **kw) -> str:
                 "wave": wave_result,
             }
 
-            # Check if wave 5 (fix) should be auto-triggered
+            # Check if wave 6 (fix) should be auto-triggered
             if role == "reviewer" and status == "completed":
                 if "CHANGES_REQUESTED" in summary.upper() or "FAIL" in summary.upper():
                     response["fix_wave_hint"] = {
-                        "wave": 5,
-                        "reason": "Reviewer requested changes — dispatch Wave 5 (Fix) to resolve issues.",
+                        "wave": 6,
+                        "reason": "Reviewer requested changes — dispatch Wave 6 (Fix) to resolve issues.",
                         "dispatch_args": {
                             "session_id": session_id,
-                            "wave_number": 5,
+                            "wave_number": 6,
                         },
                     }
 
@@ -328,6 +359,34 @@ def _handle_company_dispatch(args: dict, **kw) -> str:
 
         if not wave_def:
             return tool_error(f"Wave {wave_number} is not defined")
+
+        # Special handling for Wave 3 (per-task mode)
+        if wave_number == 3 and not role:
+            try:
+                from engine import TaskManager
+                task_mgr = TaskManager(session_mgr.conn)
+                all_tasks = task_mgr.get_all_tasks(session_id)
+
+                if all_tasks:
+                    return tool_result({
+                        "session_id": session_id,
+                        "wave_number": 3,
+                        "wave_name": wave_def["name"],
+                        "mode": "per_task",
+                        "task_count": len(all_tasks),
+                        "tasks": [
+                            {
+                                "index": t["task_index"],
+                                "description": t["description"],
+                                "files": json.loads(t["files"]) if isinstance(t["files"], str) else t["files"],
+                                "status": t["status"],
+                            }
+                            for t in all_tasks
+                        ],
+                        "instruction": "Use company_dispatch_task for each task sequentially",
+                    })
+            except ImportError:
+                pass
 
         if role:
             # Dispatch for a specific role
@@ -367,6 +426,134 @@ def _handle_company_dispatch(args: dict, **kw) -> str:
         return tool_error(f"Dispatch failed: {type(exc).__name__}: {exc}")
 
 
+def _handle_company_dispatch_task(args: dict, **kw) -> str:
+    """Dispatch a single implementation task or record its result."""
+    session_id = str(args.get("session_id") or "").strip()
+    task_index = args.get("task_index")
+
+    if not session_id:
+        return tool_error("session_id is required")
+    if task_index is None:
+        return tool_error("task_index is required")
+
+    try:
+        task_index = int(task_index)
+    except (TypeError, ValueError):
+        return tool_error("task_index must be an integer")
+
+    try:
+        session_mgr = CompanySession()
+        session = session_mgr.get_session(session_id)
+        if not session:
+            return tool_error(f"Session '{session_id}' not found")
+
+        from engine import TaskManager
+        task_mgr = TaskManager(session_mgr.conn)
+        task = task_mgr.get_task(session_id, task_index)
+
+        if not task:
+            return tool_error(f"Task {task_index} not found in session '{session_id}'")
+
+        result_data = args.get("result")
+
+        if result_data:
+            # Record implementation result → return task_reviewer prompt
+            status = str(result_data.get("status") or "done").strip()
+            if status not in ("done", "done_with_concerns", "blocked"):
+                return tool_error("result.status must be 'done', 'done_with_concerns', or 'blocked'")
+
+            task_mgr.complete_task(session_id, task_index, {
+                "summary": str(result_data.get("summary") or ""),
+                "files_created": result_data.get("files_created", []),
+                "commit_sha": str(result_data.get("commit_sha") or ""),
+            })
+
+            # Build task_reviewer context
+            ctx_store = ContextStore(session_mgr.conn)
+            previous_results = ctx_store.get_context_for_wave(session_id, 3)
+
+            previous_lines = []
+            for item in previous_results:
+                previous_lines.append(
+                    f"[{item['key']}]:\n{item['value']}"
+                )
+            previous_context = "\n\n".join(previous_lines) if previous_lines else "(No previous context)"
+
+            # Add task-specific context
+            task_context = (
+                f"TASK: {task['description']}\n"
+                f"FILES: {task['files']}\n\n"
+                f"IMPLEMENTER SUMMARY:\n{result_data.get('summary', '')}\n\n"
+                f"FILES CREATED: {json.dumps(result_data.get('files_created', []))}"
+            )
+
+            from engine import ROLE_PROMPTS
+            template = ROLE_PROMPTS.get("task_reviewer", "")
+            prompt = template.format(
+                project_path=session["project_path"],
+                feature_name=session["feature_name"],
+                previous_context=previous_context + "\n\n" + task_context,
+                extra_context="",
+            )
+
+            return tool_result({
+                "session_id": session_id,
+                "task_index": task_index,
+                "role": "task_reviewer",
+                "prompt": prompt,
+                "task": {
+                    "description": task["description"],
+                    "files": json.loads(task["files"]) if isinstance(task["files"], str) else task["files"],
+                },
+            })
+        else:
+            # Dispatch implementer
+            task_mgr.start_task(session_id, task_index)
+
+            # Build implementer context with just this task's info
+            ctx_store = ContextStore(session_mgr.conn)
+            previous_results = ctx_store.get_context_for_wave(session_id, 3)
+
+            previous_lines = []
+            for item in previous_results:
+                previous_lines.append(
+                    f"[{item['key']}]:\n{item['value']}"
+                )
+            previous_context = "\n\n".join(previous_lines) if previous_lines else "(No previous context)"
+
+            # Add task-specific context
+            task_files = json.loads(task["files"]) if isinstance(task["files"], str) else task["files"]
+            task_context = (
+                f"YOUR TASK (Task {task_index}):\n"
+                f"Description: {task['description']}\n"
+                f"Files: {json.dumps(task_files)}\n\n"
+                f"Focus ONLY on this task. Do not work on other tasks."
+            )
+
+            from engine import ROLE_PROMPTS
+            template = ROLE_PROMPTS.get("implementer", "")
+            prompt = template.format(
+                project_path=session["project_path"],
+                feature_name=session["feature_name"],
+                previous_context=previous_context + "\n\n" + task_context,
+                extra_context="",
+            )
+
+            return tool_result({
+                "session_id": session_id,
+                "task_index": task_index,
+                "role": "implementer",
+                "prompt": prompt,
+                "task": {
+                    "description": task["description"],
+                    "files": task_files,
+                },
+            })
+
+    except Exception as exc:
+        return tool_error(f"Task dispatch failed: {type(exc).__name__}: {exc}")
+
+
 def _handle_company_status(args: dict, **kw) -> str:
     """Show current session state."""
     session_id = str(args.get("session_id") or "").strip()
@@ -397,7 +584,7 @@ def _handle_company_status(args: dict, **kw) -> str:
         running = sum(1 for w in waves if w["status"] == "running")
         failed = sum(1 for w in waves if w["status"] == "failed")
 
-        return tool_result({
+        response = {
             "session_id": session_id,
             "project_path": session["project_path"],
             "feature_name": session["feature_name"],
@@ -412,7 +599,32 @@ def _handle_company_status(args: dict, **kw) -> str:
                 "total": len(waves),
             },
             "waves": wave_summaries,
-        })
+        }
+
+        # Include per-task progress if tasks exist
+        try:
+            from engine import TaskManager
+            task_mgr = TaskManager(session_mgr.conn)
+            all_tasks = task_mgr.get_all_tasks(session_id)
+            if all_tasks:
+                response["tasks"] = [
+                    {
+                        "index": t["task_index"],
+                        "description": t["description"],
+                        "status": t["status"],
+                        "reviewer_verdict": t["reviewer_verdict"],
+                    }
+                    for t in all_tasks
+                ]
+                task_completed = sum(1 for t in all_tasks if t["status"] == "completed")
+                response["task_progress"] = {
+                    "completed": task_completed,
+                    "total": len(all_tasks),
+                }
+        except ImportError:
+            pass
+
+        return tool_result(response)
     except Exception as exc:
         return tool_error(f"Status check failed: {type(exc).__name__}: {exc}")
 

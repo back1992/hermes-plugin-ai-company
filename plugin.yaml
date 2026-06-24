@@ -1,11 +1,15 @@
 name: ai-company
-version: 1.4.0
-description: "AI Company orchestration plugin — 7 tools for managing multi-wave AI development sessions with Ponytail-enforced minimal code workflow, TDD, mandatory design docs, Playwright E2E in QA, persistent SQLite state and automatic context passing between waves."
+version: 2.0.0
+description: >
+  Multi-wave AI Company workflow plugin with Superpowers + Ponytail methodology.
+  6 waves: Brainstorm+Design, Planning, Implementation (per-task subagents),
+  Verification, Review, Fix+Finish.
 author: back1992
 kind: backend
-provides_tools:
+tools:
   - company_start
   - company_dispatch
+  - company_dispatch_task
   - company_status
   - company_config
   - company_report
