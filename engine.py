@@ -173,7 +173,7 @@ class CompanySession:
         now = datetime.now(timezone.utc).isoformat()
 
         self.conn.execute(
-            "INSERT INTO sessions (id, project_path, feature_name, status, created_at, updated_at) VALUES (?, ?, ?, 'active', ?, ?)",
+            "INSERT INTO sessions (id, project_path, feature_name, status, created_at, updated_at, schema_version) VALUES (?, ?, ?, 'active', ?, ?, 2)",
             (session_id, project_path, feature_name, now, now),
         )
 
@@ -201,6 +201,7 @@ class CompanySession:
                     "parallel": w["parallel"],
                     "max_agents": w["max_agents"],
                     "auto_trigger": w["auto_trigger"],
+                    "per_task": w.get("per_task", False),
                 }
                 for w in WAVE_DEFINITIONS
             ],
@@ -306,6 +307,24 @@ class CompanySession:
             (json.dumps(config), now, session_id),
         )
         self.conn.commit()
+
+    def store_plan(self, session_id: str, plan_text: str, tasks: list[dict[str, Any]]) -> None:
+        """Store the implementation plan and create task records."""
+        now = datetime.now(timezone.utc).isoformat()
+        self.conn.execute(
+            "UPDATE sessions SET plan_text = ?, task_count = ?, updated_at = ? WHERE id = ?",
+            (plan_text, len(tasks), now, session_id),
+        )
+        self.conn.commit()
+
+        task_mgr = TaskManager(self.conn)
+        for task in tasks:
+            task_mgr.create_task(
+                session_id,
+                task["index"],
+                task["description"],
+                task.get("files", []),
+            )
 
     def build_context_for_wave(
         self, session_id: str, wave_number: int, role: str, extra_context: str = ""
@@ -451,10 +470,14 @@ class CompanySession:
         return [dict(r) for r in rows]
 
     def delete_session(self, session_id: str) -> None:
-        """Delete a session and all associated waves and context data."""
-        # Delete context store entries first (FK)
+        """Delete a session and all associated waves, tasks, and context data."""
+        # Delete context store entries first
         self.conn.execute(
             "DELETE FROM context_store WHERE session_id = ?", (session_id,)
+        )
+        # Delete tasks
+        self.conn.execute(
+            "DELETE FROM tasks WHERE session_id = ?", (session_id,)
         )
         # Delete waves
         self.conn.execute(
@@ -498,12 +521,15 @@ class ContextStore:
             )
 
         # Store role-specific context
-        if role == "pm":
-            # PM plan is critical for all subsequent waves
+        if role == "brainstormer":
+            # Design spec is critical for all subsequent waves
+            self._save(session_id, wave_number, "spec", summary)
+        elif role == "planner":
+            # Plan is critical for implementation
             self._save(session_id, wave_number, "plan", summary)
-        elif role == "qa":
-            # QA results inform whether review proceeds
-            self._save(session_id, wave_number, "qa_results", summary)
+        elif role == "verifier":
+            # Verification results inform whether review proceeds
+            self._save(session_id, wave_number, "verification_results", summary)
         elif role == "reviewer":
             # Review results determine if fix wave triggers
             self._save(session_id, wave_number, "review_results", summary)
@@ -545,3 +571,94 @@ class ContextStore:
             (session_id, wave_number, key, value),
         )
         self.conn.commit()
+
+
+class TaskManager:
+    """Manages per-task progress in Wave 3 (Implementation)."""
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def create_task(
+        self, session_id: str, task_index: int, description: str, files: list[str]
+    ) -> None:
+        """Create a task record."""
+        self.conn.execute(
+            "INSERT INTO tasks (session_id, task_index, description, files, status) VALUES (?, ?, ?, ?, 'pending')",
+            (session_id, task_index, description, json.dumps(files)),
+        )
+        self.conn.commit()
+
+    def get_task(self, session_id: str, task_index: int) -> dict[str, Any] | None:
+        """Get a single task."""
+        row = self.conn.execute(
+            "SELECT * FROM tasks WHERE session_id = ? AND task_index = ?",
+            (session_id, task_index),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def get_all_tasks(self, session_id: str) -> list[dict[str, Any]]:
+        """Get all tasks for a session, ordered by task_index."""
+        rows = self.conn.execute(
+            "SELECT * FROM tasks WHERE session_id = ? ORDER BY task_index",
+            (session_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def start_task(self, session_id: str, task_index: int) -> None:
+        """Mark a task as implementing."""
+        now = datetime.now(timezone.utc).isoformat()
+        self.conn.execute(
+            "UPDATE tasks SET status = 'implementing', started_at = ? WHERE session_id = ? AND task_index = ?",
+            (now, session_id, task_index),
+        )
+        self.conn.commit()
+
+    def complete_task(self, session_id: str, task_index: int, result: dict[str, Any]) -> None:
+        """Mark implementation as complete, ready for review."""
+        summary = result.get("summary", "")
+        files_created = json.dumps(result.get("files_created", []))
+        commit_sha = result.get("commit_sha", "")
+        self.conn.execute(
+            "UPDATE tasks SET status = 'reviewing', implementer_summary = ?, files_created = ?, commit_sha = ? WHERE session_id = ? AND task_index = ?",
+            (summary, files_created, commit_sha, session_id, task_index),
+        )
+        self.conn.commit()
+
+    def start_task_review(self, session_id: str, task_index: int) -> None:
+        """Mark a task as under review."""
+        self.conn.execute(
+            "UPDATE tasks SET status = 'reviewing' WHERE session_id = ? AND task_index = ?",
+            (session_id, task_index),
+        )
+        self.conn.commit()
+
+    def complete_task_review(
+        self, session_id: str, task_index: int, verdict: str, findings: list[dict[str, Any]]
+    ) -> None:
+        """Record review result. Status becomes 'completed' if APPROVED, 'fixing' if CHANGES_REQUESTED."""
+        now = datetime.now(timezone.utc).isoformat()
+        status = "completed" if verdict == "APPROVED" else "fixing"
+        self.conn.execute(
+            "UPDATE tasks SET status = ?, reviewer_verdict = ?, reviewer_findings = ?, completed_at = ? WHERE session_id = ? AND task_index = ?",
+            (status, verdict, json.dumps(findings), now if status == "completed" else None, session_id, task_index),
+        )
+        self.conn.commit()
+
+    def start_task_fix(self, session_id: str, task_index: int) -> None:
+        """Mark a task as being fixed (after review rejection)."""
+        self.conn.execute(
+            "UPDATE tasks SET status = 'fixing' WHERE session_id = ? AND task_index = ?",
+            (session_id, task_index),
+        )
+        self.conn.commit()
+
+    def all_tasks_complete(self, session_id: str) -> bool:
+        """Check if all tasks are completed."""
+        row = self.conn.execute(
+            "SELECT COUNT(*) as total, SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as done FROM tasks WHERE session_id = ?",
+            (session_id,),
+        ).fetchone()
+        if not row or row["total"] == 0:
+            return False
+        return row["total"] == row["done"]

@@ -95,3 +95,101 @@ def test_wave_6_auto_triggers_on_review_fail():
     from engine import WAVE_DEFINITIONS
     wave6 = [w for w in WAVE_DEFINITIONS if w["number"] == 6][0]
     assert wave6["auto_trigger"] == "on_review_fail"
+
+
+def test_create_session_creates_wave_records(conn):
+    """create_session should create records for all 6 waves."""
+    from engine import CompanySession
+    session_mgr = CompanySession(conn)
+    result = session_mgr.create_session("/test/project", "test-feature")
+    session_id = result["session_id"]
+
+    waves = session_mgr.get_all_waves(session_id)
+    # 6 waves: brainstormer(1) + planner(1) + implementer+task_reviewer(2) + verifier(1) + reviewer(1) + fixer(1) = 7 role records
+    assert len(waves) == 7
+
+
+def test_store_plan_creates_tasks(conn):
+    """store_plan should save plan text and create task records."""
+    from engine import CompanySession, TaskManager
+    session_mgr = CompanySession(conn)
+    result = session_mgr.create_session("/test/project", "test-feature")
+    session_id = result["session_id"]
+
+    tasks = [
+        {"index": 0, "description": "Add user model", "files": ["src/models/user.py"]},
+        {"index": 1, "description": "Add auth endpoint", "files": ["src/api/auth.py"]},
+    ]
+    session_mgr.store_plan(session_id, "# Plan text here", tasks)
+
+    task_mgr = TaskManager(conn)
+    all_tasks = task_mgr.get_all_tasks(session_id)
+    assert len(all_tasks) == 2
+    assert all_tasks[0]["description"] == "Add user model"
+    assert all_tasks[1]["task_index"] == 1
+
+
+def test_task_lifecycle(conn):
+    """Task should progress through pending → implementing → reviewing → completed."""
+    from engine import CompanySession, TaskManager
+    session_mgr = CompanySession(conn)
+    result = session_mgr.create_session("/test/project", "test-feature")
+    session_id = result["session_id"]
+
+    tasks = [{"index": 0, "description": "Task one", "files": ["file.py"]}]
+    session_mgr.store_plan(session_id, "Plan", tasks)
+
+    task_mgr = TaskManager(conn)
+
+    # Start task
+    task_mgr.start_task(session_id, 0)
+    task = task_mgr.get_task(session_id, 0)
+    assert task["status"] == "implementing"
+
+    # Complete implementation
+    task_mgr.complete_task(session_id, 0, {
+        "summary": "Done",
+        "files_created": ["file.py"],
+    })
+    task = task_mgr.get_task(session_id, 0)
+    assert task["implementer_summary"] == "Done"
+
+    # Start review
+    task_mgr.start_task_review(session_id, 0)
+    task = task_mgr.get_task(session_id, 0)
+    assert task["status"] == "reviewing"
+
+    # Complete review
+    task_mgr.complete_task_review(session_id, 0, "APPROVED", [])
+    task = task_mgr.get_task(session_id, 0)
+    assert task["status"] == "completed"
+    assert task["reviewer_verdict"] == "APPROVED"
+
+
+def test_all_tasks_complete(conn):
+    """all_tasks_complete should return True only when all tasks are done."""
+    from engine import CompanySession, TaskManager
+    session_mgr = CompanySession(conn)
+    result = session_mgr.create_session("/test/project", "test-feature")
+    session_id = result["session_id"]
+
+    tasks = [
+        {"index": 0, "description": "Task A", "files": []},
+        {"index": 1, "description": "Task B", "files": []},
+    ]
+    session_mgr.store_plan(session_id, "Plan", tasks)
+
+    task_mgr = TaskManager(conn)
+    assert task_mgr.all_tasks_complete(session_id) is False
+
+    task_mgr.start_task(session_id, 0)
+    task_mgr.complete_task(session_id, 0, {"summary": "Done", "files_created": []})
+    task_mgr.start_task_review(session_id, 0)
+    task_mgr.complete_task_review(session_id, 0, "APPROVED", [])
+    assert task_mgr.all_tasks_complete(session_id) is False  # Task 1 still pending
+
+    task_mgr.start_task(session_id, 1)
+    task_mgr.complete_task(session_id, 1, {"summary": "Done", "files_created": []})
+    task_mgr.start_task_review(session_id, 1)
+    task_mgr.complete_task_review(session_id, 1, "APPROVED", [])
+    assert task_mgr.all_tasks_complete(session_id) is True  # All tasks done
