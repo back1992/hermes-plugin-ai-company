@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import Any
 
 try:
@@ -583,7 +584,7 @@ def _handle_company_status(args: dict, **kw) -> str:
         running = sum(1 for w in waves if w["status"] == "running")
         failed = sum(1 for w in waves if w["status"] == "failed")
 
-        return tool_result({
+        response = {
             "session_id": session_id,
             "project_path": session["project_path"],
             "feature_name": session["feature_name"],
@@ -598,7 +599,32 @@ def _handle_company_status(args: dict, **kw) -> str:
                 "total": len(waves),
             },
             "waves": wave_summaries,
-        })
+        }
+
+        # Include per-task progress if tasks exist
+        try:
+            from engine import TaskManager
+            task_mgr = TaskManager(session_mgr.conn)
+            all_tasks = task_mgr.get_all_tasks(session_id)
+            if all_tasks:
+                response["tasks"] = [
+                    {
+                        "index": t["task_index"],
+                        "description": t["description"],
+                        "status": t["status"],
+                        "reviewer_verdict": t["reviewer_verdict"],
+                    }
+                    for t in all_tasks
+                ]
+                task_completed = sum(1 for t in all_tasks if t["status"] == "completed")
+                response["task_progress"] = {
+                    "completed": task_completed,
+                    "total": len(all_tasks),
+                }
+        except ImportError:
+            pass
+
+        return tool_result(response)
     except Exception as exc:
         return tool_error(f"Status check failed: {type(exc).__name__}: {exc}")
 

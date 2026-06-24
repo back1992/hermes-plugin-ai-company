@@ -1,8 +1,10 @@
-"""AI Company orchestration plugin — bundled, auto-loaded.
+"""AI Company orchestration plugin v2.0 — bundled, auto-loaded.
 
-Registers 8 tools into the ``ai_company`` toolset for managing multi-wave
-AI development sessions. Each session tracks waves (PM, Coder, QA, Reviewer,
-Fix) with persistent SQLite storage and automatic context passing between waves.
+Registers 9 tools into the ``ai_company`` toolset for managing multi-wave
+AI development sessions with Superpowers + Ponytail methodology. Each session
+tracks 6 waves (Brainstorm+Design, Planning, Implementation with per-task
+subagents, Verification, Review, Fix+Finish) with persistent SQLite storage
+and automatic context passing between waves.
 
 The plugin handles STATE MANAGEMENT and CONTEXT BUILDING only — it does NOT
 call delegate_task itself. The orchestrator agent uses company_dispatch to get
@@ -17,6 +19,7 @@ try:
         COMPANY_CREATE_ISSUE_SCHEMA,
         COMPANY_DELETE_SCHEMA,
         COMPANY_DISPATCH_SCHEMA,
+        COMPANY_DISPATCH_TASK_SCHEMA,
         COMPANY_LIST_SCHEMA,
         COMPANY_REPORT_SCHEMA,
         COMPANY_START_SCHEMA,
@@ -26,6 +29,7 @@ try:
         _handle_company_create_issue,
         _handle_company_delete,
         _handle_company_dispatch,
+        _handle_company_dispatch_task,
         _handle_company_list,
         _handle_company_report,
         _handle_company_start,
@@ -37,6 +41,7 @@ except ImportError:
         COMPANY_CREATE_ISSUE_SCHEMA,
         COMPANY_DELETE_SCHEMA,
         COMPANY_DISPATCH_SCHEMA,
+        COMPANY_DISPATCH_TASK_SCHEMA,
         COMPANY_LIST_SCHEMA,
         COMPANY_REPORT_SCHEMA,
         COMPANY_START_SCHEMA,
@@ -46,6 +51,7 @@ except ImportError:
         _handle_company_create_issue,
         _handle_company_delete,
         _handle_company_dispatch,
+        _handle_company_dispatch_task,
         _handle_company_list,
         _handle_company_report,
         _handle_company_start,
@@ -53,14 +59,15 @@ except ImportError:
     )
 
 _TOOLS = (
-    ("company_start",    COMPANY_START_SCHEMA,    _handle_company_start,    "🏢"),
-    ("company_dispatch", COMPANY_DISPATCH_SCHEMA, _handle_company_dispatch, "📋"),
-    ("company_status",   COMPANY_STATUS_SCHEMA,   _handle_company_status,   "📊"),
-    ("company_config",   COMPANY_CONFIG_SCHEMA,    _handle_company_config,   "⚙️"),
-    ("company_report",   COMPANY_REPORT_SCHEMA,   _handle_company_report,   "📑"),
-    ("company_list",     COMPANY_LIST_SCHEMA,     _handle_company_list,     "📂"),
-    ("company_delete",   COMPANY_DELETE_SCHEMA,   _handle_company_delete,   "🗑️"),
-    ("company_create_issue", COMPANY_CREATE_ISSUE_SCHEMA, _handle_company_create_issue, "🐛"),
+    ("company_start",          COMPANY_START_SCHEMA,          _handle_company_start,          "🏢"),
+    ("company_dispatch",       COMPANY_DISPATCH_SCHEMA,       _handle_company_dispatch,       "📋"),
+    ("company_dispatch_task",  COMPANY_DISPATCH_TASK_SCHEMA,  _handle_company_dispatch_task,  "🔧"),
+    ("company_status",         COMPANY_STATUS_SCHEMA,         _handle_company_status,         "📊"),
+    ("company_config",         COMPANY_CONFIG_SCHEMA,         _handle_company_config,         "⚙️"),
+    ("company_report",         COMPANY_REPORT_SCHEMA,         _handle_company_report,         "📑"),
+    ("company_list",           COMPANY_LIST_SCHEMA,           _handle_company_list,           "📂"),
+    ("company_delete",         COMPANY_DELETE_SCHEMA,         _handle_company_delete,         "🗑️"),
+    ("company_create_issue",   COMPANY_CREATE_ISSUE_SCHEMA,   _handle_company_create_issue,   "🐛"),
 )
 
 
