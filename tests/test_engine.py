@@ -59,3 +59,39 @@ def test_tasks_table_columns(conn):
                 'started_at', 'completed_at']
     for col in expected:
         assert col in cols, f"tasks table missing column: {col}"
+
+
+def test_wave_definitions_has_six_waves():
+    """v2.0 should have exactly 6 waves."""
+    from engine import WAVE_DEFINITIONS
+    assert len(WAVE_DEFINITIONS) == 6
+
+
+def test_wave_definitions_roles():
+    """Each wave should have the correct roles."""
+    from engine import WAVE_DEFINITIONS
+    expected = {
+        1: ["brainstormer"],
+        2: ["planner"],
+        3: ["implementer", "task_reviewer"],
+        4: ["verifier"],
+        5: ["reviewer"],
+        6: ["fixer"],
+    }
+    for wave in WAVE_DEFINITIONS:
+        assert wave["roles"] == expected[wave["number"]], \
+            f"Wave {wave['number']} has wrong roles"
+
+
+def test_wave_3_is_per_task():
+    """Wave 3 should be marked as per_task."""
+    from engine import WAVE_DEFINITIONS
+    wave3 = [w for w in WAVE_DEFINITIONS if w["number"] == 3][0]
+    assert wave3.get("per_task") is True
+
+
+def test_wave_6_auto_triggers_on_review_fail():
+    """Wave 6 should auto-trigger on review failure."""
+    from engine import WAVE_DEFINITIONS
+    wave6 = [w for w in WAVE_DEFINITIONS if w["number"] == 6][0]
+    assert wave6["auto_trigger"] == "on_review_fail"
