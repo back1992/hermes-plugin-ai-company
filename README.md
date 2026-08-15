@@ -23,8 +23,11 @@ Preview the skill without installing: `hermes skills inspect back1992/hermes-plu
 2. Create the integration contract in your project root:
 
    ```bash
-   bash ~/.hermes/plugins/ai-company/scripts/setup-project.sh /path/to/your/project
-   # or from a fresh clone of this repo: scripts/setup-project.sh /path/to/your/project
+   # From a fresh clone of this repo:
+   bash skills/ai-company-workflow/scripts/setup-project.sh /path/to/your/project
+   # Or after `hermes skills install`, from the installed skill directory
+   # (hermes skills list shows the path):
+   bash <skill-dir>/scripts/setup-project.sh /path/to/your/project
    ```
 
 3. Edit `.ai-company.yaml`: tracker issue-filing command, external review gate,
@@ -34,7 +37,7 @@ Preview the skill without installing: `hermes skills inspect back1992/hermes-plu
    the design gate and before deploy); with config + `unattended.enabled: true`
    it can run as a cron auto-loop on an always-on server.
 
-Config reference: [`ai-company.example.yaml`](ai-company.example.yaml) ·
+Config reference: [`skills/ai-company-workflow/templates/ai-company.example.yaml`](skills/ai-company-workflow/templates/ai-company.example.yaml) ·
 Concrete wiring example: [`docs/reference-implementation.md`](docs/reference-implementation.md)
 
 ## Quick Start

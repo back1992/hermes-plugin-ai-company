@@ -23,7 +23,7 @@ Use Hermes Agent's `delegate_task` to simulate a **software company** where sub-
 
 **SELF-ENFORCEMENT GATE — count files BEFORE coding:** If fix touches ≥3 files, workflow is mandatory. Do NOT start implementation until the Planner's plan exists. See `references/self-enforcement-pitfalls.md` for the "simple fix trap" incident and pre-flight checklist.
 
-**Outer workflow — the integration contract:** AI Company produces code + tests + verification reports. Everything *around* that — issue tracking, commits, external approval, deploy, notifications — belongs to your project's own development cycle. Drop an `.ai-company.yaml` at the project root (template: `ai-company.example.yaml` in the plugin repo; `scripts/setup-project.sh <project-dir>` creates it) to declare the hooks: `tracker` (issue-filing command + issue-ref pattern), `review_gate` (external approval command), `deploy` (deploy + health check), `notify` (notification channel), `project.prod_url` (for E2E proof). When the config exists, AI Company sessions MUST honor it: file issues via the configured command, cite real issue references, never self-approve through the review gate, never deploy except via the configured command. When no config exists, AI Company runs in interactive mode: pause for human approval at the Wave-1→2 gate and before commit/deploy. See "Integration Contract" below.
+**Outer workflow — the integration contract:** AI Company produces code + tests + verification reports. Everything *around* that — issue tracking, commits, external approval, deploy, notifications — belongs to your project's own development cycle. Drop an `.ai-company.yaml` at the project root (template: `templates/ai-company.example.yaml`, bundled with this skill; `scripts/setup-project.sh <project-dir>` creates it) to declare the hooks: `tracker` (issue-filing command + issue-ref pattern), `review_gate` (external approval command), `deploy` (deploy + health check), `notify` (notification channel), `project.prod_url` (for E2E proof). When the config exists, AI Company sessions MUST honor it: file issues via the configured command, cite real issue references, never self-approve through the review gate, never deploy except via the configured command. When no config exists, AI Company runs in interactive mode: pause for human approval at the Wave-1→2 gate and before commit/deploy. See "Integration Contract" below.
 
 **AI Company subagents ≠ the external review gate:** If your project has an outer reviewer role (a separate agent or CLI that approves pushes/deploys), AI Company's 7 roles (Brainstormer/Planner/Implementer/Task Reviewer/Verifier/Reviewer/Fixer) are INNER subagents the orchestrator dispatches via `delegate_task` to do complex implementation. The per-task Task Reviewer (Wave 3) and Reviewer (Wave 5) are INTERNAL quality gates — they do NOT replace the final approval. AI Company must never post approvals, merge, or close issues on its own when the integration contract assigns those to the outer cycle. Reference implementation: ppt-bot-v2 runs Hermes as CEO/orchestrator on the prod server, AI Company (or Codex CLI) as the coder surface, and a separate claude CLI session as the outer reviewer — see `docs/reference-implementation.md` in the plugin repo.
 
@@ -364,7 +364,21 @@ company_dispatch(
 
 ## Pitfalls Index
 
-Incident write-ups live in `references/` — load them with `skill_view(name='ai-company-workflow', file_path='references/<file>.md')`. Start with `common-pitfalls.md` (the skip trap) and `self-enforcement-pitfalls.md` (pre-flight checklist).
+Incident write-ups and patterns live in the references index below — load them with `skill_view(name='ai-company-workflow', file_path='references/<file>.md')`. Start with `references/common-pitfalls.md` (the skip trap) and `references/self-enforcement-pitfalls.md` (pre-flight checklist).
+
+| Reference | Contents |
+|-----------|----------|
+| `references/common-pitfalls.md` | The "obvious bug fix" skip — most common failure mode |
+| `references/self-enforcement-pitfalls.md` | The "simple fix" trap + pre-flight checklist |
+| `references/enforcement-pitfalls.md` | Real session failure: skipping the workflow |
+| `references/e2e-verification-pitfalls.md` | "Deployed ≠ verified" — E2E proof checklist |
+| `references/verification-discipline-pitfalls.md` | Test before declaring complete |
+| `references/large-task-timeout-patterns.md` | Splitting waves that exceed the 600s subagent timeout |
+| `references/prevention-over-cleanup-and-timeout-chain.md` | Prevention over cleanup; timeout-chain alignment |
+| `references/playwright-e2e-proof-patterns.md` | Browser proof tests, video recording, token injection |
+| `references/qa-e2e-requirement-2026-07-09.md` | QA wave must run real HTTP E2E tests |
+| `references/plugin-structure.md` | Plugin layout, tool API, install methods, wave definitions |
+| `references/hermes-plugin-building.md` | Building Hermes plugins (pattern used by this plugin) |
 
 The list below is framework-agnostic — patterns that apply to any project using the AI Company workflow.
 
@@ -599,7 +613,7 @@ No test for a feature = it breaks silently in production. Every feature MUST hav
 
 ## Integration Contract (`.ai-company.yaml`)
 
-AI Company is project-agnostic. Project-specific wiring lives in ONE config file at the project root — `.ai-company.yaml` (create it from `ai-company.example.yaml`, or run `scripts/setup-project.sh <project-dir>` from the plugin repo). The orchestrator MUST read it at session start and honor it throughout.
+AI Company is project-agnostic. Project-specific wiring lives in ONE config file at the project root — `.ai-company.yaml` (create it from `templates/ai-company.example.yaml`, or run `scripts/setup-project.sh <project-dir>` from this skill's directory). The orchestrator MUST read it at session start and honor it throughout.
 
 | Key | Purpose | Used by |
 |-----|---------|---------|

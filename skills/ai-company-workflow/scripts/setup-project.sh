@@ -4,7 +4,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SRC="$REPO_ROOT/ai-company.example.yaml"
+SRC="$REPO_ROOT/../templates/ai-company.example.yaml"
 DEST_DIR="${1:-.}"
 DEST="$DEST_DIR/.ai-company.yaml"
 
