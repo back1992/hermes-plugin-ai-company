@@ -22,6 +22,17 @@ tracker:
   file_issue_cmd: ""
   # Regex of valid issue references for commit messages, e.g. "PROJ-\d+".
   issue_ref_pattern: ""
+  #
+  # CLOSE CONTRACT (added 2026-08-15 after the TRA-437 incident):
+  # Closing an issue MUST go through the tracker's validating API (HTTP
+  # endpoint or official CLI) using ONLY statuses the tracker's schema
+  # defines. Check the tracker's status enum first - e.g. ppt-bot-v2's
+  # tracker has backlog/todo/in_progress/done/cancelled and there is NO
+  # "closed" status: closing = PATCH {"status": "done"} on the issue.
+  # NEVER write status directly to the database/ORM: it bypasses
+  # validation and the tracker UI keeps showing the issue as open
+  # forever. Every close must post an evidence comment (fix commit SHA +
+  # test output) in the same flow.
 
 review_gate:
   # External final reviewer. AI Company never posts approvals itself;
