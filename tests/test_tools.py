@@ -105,3 +105,45 @@ def test_company_dispatch_wave3_returns_per_task_mode(setup_session):
     assert data["mode"] == "per_task"
     assert data["task_count"] == 2
     assert len(data["tasks"]) == 2
+
+
+def test_company_create_issue_uses_project_config(tmp_path):
+    """tracker.file_issue_cmd from .ai-company.yaml wins over the Linear fallback."""
+    from tools import _handle_company_create_issue
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    outfile = tmp_path / "filed.md"
+    copier = tmp_path / "copy.sh"
+    copier.write_text("#!/bin/sh\ncp \"$1\" \"" + str(outfile) + "\"\n")
+
+    config = project / ".ai-company.yaml"
+    config.write_text(
+        "tracker:\n"
+        f"  file_issue_cmd: \"sh {copier} {{body_file}}\"\n"
+    )
+
+    result = _handle_company_create_issue({
+        "title": "Test issue",
+        "description": "Body text here",
+        "project_path": str(project),
+    })
+
+    assert outfile.exists(), f"file_issue_cmd did not run: {result}"
+    assert outfile.read_text() == "Body text here"
+    assert "error" not in result
+
+
+def test_company_create_issue_no_config_no_linear_script(tmp_path, monkeypatch):
+    """Without config, missing Linear helper yields a helpful error."""
+    import os
+    from tools import _handle_company_create_issue
+
+    monkeypatch.setattr(os.path, "expanduser", lambda p: str(tmp_path / "nonexistent.py"))
+    result = _handle_company_create_issue({
+        "title": "Test issue",
+        "description": "Body",
+        "project_path": str(tmp_path),
+    })
+    assert "error" in result
+    assert ".ai-company.yaml" in result

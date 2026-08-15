@@ -748,7 +748,9 @@ def _handle_company_delete(args: dict, **kw) -> str:
 COMPANY_CREATE_ISSUE_SCHEMA: dict[str, Any] = {
     "name": "company_create_issue",
     "description": (
-        "Create a Linear issue when an agent discovers a bug, security issue, or quality problem. "
+        "Create a tracker issue when an agent discovers a bug, security issue, or quality problem. "
+        "Uses the project's tracker.file_issue_cmd from .ai-company.yaml when present "
+        "(pass project_path); falls back to the bundled Linear helper script otherwise. "
         "Includes dedup check to avoid creating duplicate issues. "
         "Returns the created issue identifier and URL."
     ),
@@ -769,7 +771,11 @@ COMPANY_CREATE_ISSUE_SCHEMA: dict[str, Any] = {
             },
             "team": {
                 "type": "string",
-                "description": "Team key: LIN (studio) or TRA (trade_bot). Default: LIN",
+                "description": "Team key (used by the legacy Linear fallback). Default: LIN",
+            },
+            "project_path": {
+                "type": "string",
+                "description": "Project root containing .ai-company.yaml (integration contract). When its tracker.file_issue_cmd is set, that command is used instead of Linear.",
             },
             "labels": {
                 "type": "string",
@@ -785,8 +791,55 @@ COMPANY_CREATE_ISSUE_SCHEMA: dict[str, Any] = {
 }
 
 
+def _load_ai_company_config(project_path: str) -> dict:
+    """Best-effort load of <project_path>/.ai-company.yaml (integration contract)."""
+    if not project_path:
+        return {}
+    cfg_path = os.path.join(os.path.expanduser(project_path), ".ai-company.yaml")
+    if not os.path.isfile(cfg_path):
+        return {}
+    try:
+        import yaml
+
+        with open(cfg_path, "r", encoding="utf-8") as fh:
+            data = yaml.safe_load(fh)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _file_issue_via_config(file_cmd: str, title: str, description: str, priority: int) -> str:
+    """Run the project's configured file_issue_cmd with placeholder expansion."""
+    import shlex
+    import subprocess
+    import tempfile
+
+    with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as fh:
+        fh.write(description)
+        body_file = fh.name
+    try:
+        expanded = file_cmd.format(
+            title=shlex.quote(title), body_file=body_file, priority=priority
+        )
+        result = subprocess.run(expanded, shell=True, capture_output=True, text=True, timeout=60)
+        if result.returncode == 0:
+            out = (result.stdout or "").strip()
+            try:
+                return tool_result(json.loads(out))
+            except (ValueError, TypeError):
+                return tool_result({"status": "filed", "output": out})
+        return tool_error(result.stderr or result.stdout or "file_issue_cmd failed")
+    except subprocess.TimeoutExpired:
+        return tool_error("file_issue_cmd timed out (60s)")
+    finally:
+        try:
+            os.unlink(body_file)
+        except OSError:
+            pass
+
+
 def _handle_company_create_issue(args: dict, **kw) -> str:
-    """Create a Linear issue from an agent finding."""
+    """Create a tracker issue from an agent finding."""
     import subprocess
 
     title = str(args.get("title") or "").strip()
@@ -795,17 +848,27 @@ def _handle_company_create_issue(args: dict, **kw) -> str:
     team = str(args.get("team") or "LIN").strip()
     labels = str(args.get("labels") or "").strip()
     session_id = str(args.get("session_id") or "").strip()
+    project_path = str(args.get("project_path") or "").strip()
 
     if not title:
         return tool_error("title is required")
     if not description:
         return tool_error("description is required")
 
+    # Integration contract: project-configured tracker command wins.
+    config = _load_ai_company_config(project_path)
+    file_cmd = str((config.get("tracker") or {}).get("file_issue_cmd") or "").strip()
+    if file_cmd:
+        return _file_issue_via_config(file_cmd, title, description, priority)
+
     script = os.path.expanduser(
         "~/.hermes/skills/productivity/linear/scripts/linear_create_issue.py"
     )
     if not os.path.exists(script):
-        return tool_error(f"Script not found: {script}")
+        return tool_error(
+            f"Script not found: {script}. Either install the Linear helper or set "
+            "tracker.file_issue_cmd in the project's .ai-company.yaml and pass project_path."
+        )
 
     cmd = [
         "python3", script,

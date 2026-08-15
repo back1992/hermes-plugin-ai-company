@@ -1,12 +1,41 @@
-# Hermes Plugin: AI Company v2.0
+# Hermes Plugin: AI Company v2.1
 
 An orchestration plugin for [Hermes Agent](https://hermes-agent.nousresearch.com/) that implements a **Superpowers + Ponytail** development methodology — spawning sub-agents through 6 disciplined waves with per-task implementation.
 
 ## Install
 
 ```bash
+# Plugin (role engine: session state, context passing, per-task tracking)
 hermes plugins install back1992/hermes-plugin-ai-company --enable
+
+# Skill (workflow instructions for the orchestrator: 6 waves, pitfalls, unattended mode)
+hermes skills install back1992/hermes-plugin-ai-company/skills/ai-company-workflow
 ```
+
+Preview the skill without installing: `hermes skills inspect back1992/hermes-plugin-ai-company/skills/ai-company-workflow`
+
+> The skill and the plugin's `prompts.py` ROLE_PROMPTS must be updated together
+> (skill pitfall #3) — that is why the skill ships inside this repo.
+
+## Using it in your own project (vibe coding)
+
+1. Install plugin + skill (above).
+2. Create the integration contract in your project root:
+
+   ```bash
+   bash ~/.hermes/plugins/ai-company/scripts/setup-project.sh /path/to/your/project
+   # or from a fresh clone of this repo: scripts/setup-project.sh /path/to/your/project
+   ```
+
+3. Edit `.ai-company.yaml`: tracker issue-filing command, external review gate,
+   deploy + health check, notification channel, production URL.
+4. Ask Hermes to build something: *"Build X using the AI company workflow."*
+   With no config the workflow runs interactively (pauses for your approval at
+   the design gate and before deploy); with config + `unattended.enabled: true`
+   it can run as a cron auto-loop on an always-on server.
+
+Config reference: [`ai-company.example.yaml`](ai-company.example.yaml) ·
+Concrete wiring example: [`docs/reference-implementation.md`](docs/reference-implementation.md)
 
 ## Quick Start
 

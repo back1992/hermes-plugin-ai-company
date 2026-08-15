@@ -1,0 +1,50 @@
+# .ai-company.yaml — AI Company workflow integration contract.
+# Copy to your project root (or run: scripts/setup-project.sh <project-dir>)
+# and fill in the hooks. All keys are optional in interactive mode;
+# unattended mode requires the keys marked [unattended].
+#
+# The orchestrator reads this file at company_start time. Commands run
+# from the project root with the project's environment.
+
+project:
+  name: my-project
+  # Production URL used for E2E proof tests (Verifier wave, UX review).
+  prod_url: https://app.example.com
+
+tracker:
+  # Command that files an issue in your tracker. Placeholders:
+  #   {title}      — issue title (shell-quoted by the caller)
+  #   {body_file}  — path to a temp .md file with the full description
+  #   {priority}   — 1=urgent .. 4=low
+  # Must be idempotent/dedup-safe if your loop can re-file.
+  # Example (custom tracker script):
+  #   file_issue_cmd: "python3 scripts/file-issue.py --title {title} --body-file {body_file} --priority {priority}"
+  file_issue_cmd: ""
+  # Regex of valid issue references for commit messages, e.g. "PROJ-\d+".
+  issue_ref_pattern: ""
+
+review_gate:
+  # External final reviewer. AI Company never posts approvals itself;
+  # this command is run after Wave 5 passes, before push/deploy.
+  # Example: "python3 scripts/conductor-review.py --post"
+  command: ""
+  approver: ""            # identity allowed to approve (informational)
+
+deploy:
+  command: ""             # e.g. "make deploy" or "git pull && systemctl restart app"
+  health_check: ""        # e.g. "curl -fsS https://app.example.com/health"
+
+notify:
+  # Notification channel for stop conditions / human-needed events.
+  # Example: "bash scripts/notify.sh" wrapping a Slack/Feishu/Discord webhook.
+  command: ""
+
+unattended:               # [unattended] prod auto-loop policy
+  enabled: false
+  max_issues_per_run: 3   # [unattended] budget per loop run
+  auto_approval:          # [unattended] replaces the Wave-1 pause
+    max_files: 8
+    allow_new_dependencies: false
+    allow_new_public_endpoints: false
+    allow_schema_changes: false
+    allow_auth_security_changes: false
