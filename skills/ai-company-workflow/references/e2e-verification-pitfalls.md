@@ -39,10 +39,10 @@ import requests
 
 BASE = "https://your-prod.example.com"  # Production URL, not localhost
 
-# 1. Login
-r = requests.post(f"{BASE}/api/v1/login", json=load_test_credentials())  # creds from env/secret store
-assert r.status_code == 200, f"Login failed: {r.status_code}"
-token = r.json()["data"]["access_token"]
+# 1. Login — use the project's auth helper (credentials from env/secret store,
+#    never hardcoded; the helper wraps the login endpoint and returns a token)
+token = get_auth_token(BASE)
+assert token, "Login failed" 
 
 # 2. Test the specific operation that was failing
 headers = {"Authorization": f"Bearer ***
