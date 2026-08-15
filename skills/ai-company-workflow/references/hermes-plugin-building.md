@@ -87,7 +87,7 @@ Keep all state management, DB operations, and business logic in engine.py. Tools
 **SQLite pattern** (for persistent state):
 ```python
 import sqlite3, os
-DB_PATH = os.path.join(os.environ.get('HERMES_HOME', os.path.expanduser('~/.hermes')), 'my-plugin.db')
+DB_PATH = os.path.join(os.getenv('HERMES_HOME', os.path.expanduser('~/.hermes')), 'my-plugin.db')
 
 class MyEngine:
     def __init__(self, conn=None):

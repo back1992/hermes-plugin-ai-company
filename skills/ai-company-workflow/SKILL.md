@@ -127,7 +127,7 @@ The Implementer subagent consistently times out at 600s for tasks modifying 20+ 
 2. Run tests on the new test files — usually pass, confirming implementation works
 3. Fix remaining issues manually (common patterns):
    - Old tests asserting old dimension/feature counts (e.g., `== 12` → `== 15`)
-   - Tests triggering real API calls (need `patch.dict(os.environ, {"API_KEY": ""})`)
+   - Tests triggering real API calls (need per-test env-var mocking)
    - Floating-point weight normalization (sum drifts above 1.0 after overrides)
    - Falsy empty string vs None for API keys (`"" or env_var` falls through)
 4. Record Implementer wave as completed with summary of what was done + what was fixed manually
@@ -328,7 +328,7 @@ When a feature integrates with an external service, pass its API contracts in `e
 company_dispatch(
     session_id=sid, wave_number=1, role="brainstormer",
     extra_context="""
-    ## External Service: Auth Service (http://127.0.0.1:8081)
+    ## External Service: Auth Service (internal base URL — pass the real one)
     - GET /api/auth/me — current user profile
     - PUT /api/auth/change-password — old_password + new_password
     - PUT /api/auth/profile — display_name, email

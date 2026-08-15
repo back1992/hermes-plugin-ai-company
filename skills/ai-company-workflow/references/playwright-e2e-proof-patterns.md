@@ -13,7 +13,7 @@ import { defineConfig } from '@playwright/test';
 export default defineConfig({
   testDir: './e2e',
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: 'http://localhost:<frontend-port>',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
@@ -32,7 +32,7 @@ export default defineConfig({
 ```
 
 **Detect system Chromium:** `which chromium-browser chromium 2>/dev/null` or `ls /snap/bin/chromium`.
-**Install if missing:** `sudo snap install chromium` (Ubuntu) or `sudo apt install chromium-browser`.
+**Install if missing:** `snap install chromium` (Ubuntu) or `apt install chromium-browser` (with whatever privilege mechanism the host uses).
 
 ## QA Wave Integration (v1.3.1+)
 
@@ -117,7 +117,7 @@ const browser = await chromium.launch({
   executablePath: CHROME 
 });
 const context = await browser.newContext({
-  baseURL: 'http://localhost:3000',
+  baseURL: 'http://localhost:<frontend-port>',
   viewport: { width: 1280, height: 900 },
   recordVideo: { 
     dir: '/tmp/proof-video/', 
@@ -143,10 +143,10 @@ const files = fs.readdirSync('/tmp/proof-video/');
 3. **Auth token injection** — Get token from auth-service, inject via `localStorage` BEFORE navigating to the upload page:
    ```javascript
    // Auth-service login (NOT the app's login endpoint)
-   const resp = await fetch('http://localhost:8081/api/auth/login', {
+   const resp = await fetch(`${AUTH_SERVICE_BASE}/api/auth/login`, {
      method: 'POST',
      headers: { 'Content-Type': 'application/json' },
-     body: JSON.stringify({ username_or_email: 'admin', password: '<password>' })
+     body: JSON.stringify(loadTestCredentials())  // creds from env/secret store
    });
    const { access_token } = await resp.json();
    

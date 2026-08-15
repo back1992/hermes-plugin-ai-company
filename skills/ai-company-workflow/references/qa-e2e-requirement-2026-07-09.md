@@ -19,15 +19,15 @@ QA agent reads code files and checks syntax/imports, but doesn't make HTTP reque
 ## E2E Test Script Template
 ```python
 import requests
-BASE = "http://localhost:5001"
-FRONT = "http://localhost:3001"
+BASE = "http://localhost:<backend-port>"
+FRONT = "http://localhost:<frontend-port>"
 
 # 1. Backend health
 assert requests.get(f"{BASE}/").status_code == 200
 
 # 2. Auth flow
 token = requests.post(f"{BASE}/api/auth/login/",
-    json={"username": "testuser", "password": "testpass123"}).json().get("access")
+    json=load_test_credentials()).json().get("access")  # creds from env/secret store
 assert token
 
 # 3. Protected endpoint

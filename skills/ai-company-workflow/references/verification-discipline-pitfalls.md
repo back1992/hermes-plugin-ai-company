@@ -17,7 +17,7 @@
 **Correct verification sequence**:
 1. **Resolve all merge conflicts first**: `grep -rn "<<<<<<" backend/` before any testing
 2. **Verify database schema**: Check new columns exist with `information_schema.columns` query
-3. **Test actual endpoints**: `curl -X POST http://127.0.0.1:5000/api/v1/upload/check` with real payload
+3. **Test actual endpoints**: `curl -X POST http://<backend-host>:<port>/api/v1/upload/check` with real payload
 4. **Check logs for new errors**: `tail -50 logs/gunicorn-error.log` after each request
 5. **Verify in browser**: User should refresh and retry, not just see "service active"
 
@@ -40,7 +40,7 @@ with app.app_context():
 "
 
 # 3. Service responds to requests
-curl -s http://127.0.0.1:5000/api/v1/upload/check -X POST -H "Content-Type: application/json" -d '{"file_hash":"test"}' | grep -E "code|message"
+curl -s http://<backend-host>:<port>/api/v1/upload/check -X POST -H "Content-Type: application/json" -d '{"file_hash":"test"}' | grep -E "code|message"
 
 # 4. No new errors in logs
 tail -20 logs/gunicorn-error.log | grep -E "ERROR|Traceback" | tail -3

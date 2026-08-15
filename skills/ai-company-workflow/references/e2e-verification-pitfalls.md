@@ -10,9 +10,9 @@ After deploying ANY fix, NEVER claim success until you have E2E proof through th
 
 Run ALL of these BEFORE reporting to user:
 
-- [ ] **Service restarted**: `sudo systemctl restart <service>` + `systemctl status` confirms running
+- [ ] **Service restarted**: `systemctl restart <service>` (with whatever privilege mechanism the host uses) + `systemctl status` confirms running
 - [ ] **New config loaded**: Check startup log for the specific changed value (e.g., `grep "Using worker" logs/gunicorn-error.log` shows `gthread`, not `sync`)
-- [ ] **Real request through production URL**: Test via `https://your-prod.example.com/api/...` (not just `localhost:5000`) — this exercises nginx, CORS, SSL, the full chain
+- [ ] **Real request through production URL**: Test via `https://your-prod.example.com/api/...` (not just the local dev port) — this exercises nginx, CORS, SSL, the full chain
 - [ ] **User-reported symptom is resolved**: If user says "hangs at 55%", verify the progress bar actually reaches 100%. If "download fails", verify the file actually downloads. Don't just check that YOUR change works — check that THEIR problem is gone.
 - [ ] **Error log is clean**: `grep -c "Error" logs/gunicorn-error.log` after deployment timestamp should be 0 (or only pre-existing errors)
 
@@ -40,7 +40,7 @@ import requests
 BASE = "https://your-prod.example.com"  # Production URL, not localhost
 
 # 1. Login
-r = requests.post(f"{BASE}/api/v1/login", json={"username": "admin", "password": "***"})
+r = requests.post(f"{BASE}/api/v1/login", json=load_test_credentials())  # creds from env/secret store
 assert r.status_code == 200, f"Login failed: {r.status_code}"
 token = r.json()["data"]["access_token"]
 
@@ -62,5 +62,5 @@ Run it: `.venv/bin/python3 /tmp/e2e_verify.py`
 | Gunicorn restarted, no errors | SSE generator still crashes (different code path) |
 | Nginx config updated | Next.js ISR cache serving stale HTML |
 | Code fix passes unit tests | Integration with auth-service still 401s |
-| `curl localhost:5000` works | Production URL goes through different nginx config |
+| `curl` to the local dev port works | Production URL goes through different nginx config |
 | No errors in error log | Error logged at WARNING level, not ERROR |
