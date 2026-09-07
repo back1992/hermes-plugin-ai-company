@@ -36,6 +36,23 @@ except ImportError:
         return json.dumps({"error": msg})
 
 
+def _load_engine():
+    """Resolve the sibling ``engine`` module under either import style.
+
+    Hermes imports this plugin as ``hermes_plugins.ai_company`` with
+    ``submodule_search_locations=[plugin_dir]``
+    (``hermes_cli/plugins_loader.py::_load_directory_module``), so the plugin
+    dir is never on ``sys.path`` and a bare ``import engine`` fails at call
+    time; a standalone ``import tools`` has no package context, so the
+    relative form fails there.
+    """
+    try:
+        from . import engine
+    except ImportError:
+        import engine
+    return engine
+
+
 def _check_available() -> bool:
     """Plugin is always available."""
     return True
@@ -363,7 +380,7 @@ def _handle_company_dispatch(args: dict, **kw) -> str:
         # Special handling for Wave 3 (per-task mode)
         if wave_number == 3 and not role:
             try:
-                from engine import TaskManager
+                TaskManager = _load_engine().TaskManager
                 task_mgr = TaskManager(session_mgr.conn)
                 all_tasks = task_mgr.get_all_tasks(session_id)
 
@@ -385,8 +402,11 @@ def _handle_company_dispatch(args: dict, **kw) -> str:
                         ],
                         "instruction": "Use company_dispatch_task for each task sequentially",
                     })
-            except ImportError:
-                pass
+            except ImportError as exc:
+                return tool_error(
+                    "Wave 3 per-task dispatch unavailable: "
+                    f"{type(exc).__name__}: {exc}"
+                )
 
         if role:
             # Dispatch for a specific role
@@ -447,7 +467,7 @@ def _handle_company_dispatch_task(args: dict, **kw) -> str:
         if not session:
             return tool_error(f"Session '{session_id}' not found")
 
-        from engine import TaskManager
+        TaskManager = _load_engine().TaskManager
         task_mgr = TaskManager(session_mgr.conn)
         task = task_mgr.get_task(session_id, task_index)
 
@@ -487,7 +507,7 @@ def _handle_company_dispatch_task(args: dict, **kw) -> str:
                 f"FILES CREATED: {json.dumps(result_data.get('files_created', []))}"
             )
 
-            from engine import ROLE_PROMPTS
+            ROLE_PROMPTS = _load_engine().ROLE_PROMPTS
             template = ROLE_PROMPTS.get("task_reviewer", "")
             prompt = template.format(
                 project_path=session["project_path"],
@@ -530,7 +550,7 @@ def _handle_company_dispatch_task(args: dict, **kw) -> str:
                 f"Focus ONLY on this task. Do not work on other tasks."
             )
 
-            from engine import ROLE_PROMPTS
+            ROLE_PROMPTS = _load_engine().ROLE_PROMPTS
             template = ROLE_PROMPTS.get("implementer", "")
             prompt = template.format(
                 project_path=session["project_path"],
@@ -603,7 +623,7 @@ def _handle_company_status(args: dict, **kw) -> str:
 
         # Include per-task progress if tasks exist
         try:
-            from engine import TaskManager
+            TaskManager = _load_engine().TaskManager
             task_mgr = TaskManager(session_mgr.conn)
             all_tasks = task_mgr.get_all_tasks(session_id)
             if all_tasks:
@@ -621,8 +641,10 @@ def _handle_company_status(args: dict, **kw) -> str:
                     "completed": task_completed,
                     "total": len(all_tasks),
                 }
-        except ImportError:
-            pass
+        except ImportError as exc:
+            response["tasks_error"] = (
+                f"task progress unavailable: {type(exc).__name__}: {exc}"
+            )
 
         return tool_result(response)
     except Exception as exc:
