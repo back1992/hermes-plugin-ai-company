@@ -233,7 +233,8 @@ COMPANY_DISPATCH_TASK_SCHEMA: dict[str, Any] = {
     "description": (
         "Dispatch a single implementation task from the plan. "
         "Without 'result': returns the implementer prompt for the task. "
-        "With 'result': records the implementation result and returns the task_reviewer prompt."
+        "With 'result': records the implementation result and returns the task_reviewer prompt. "
+        "With 'review_verdict': records the task_reviewer's verdict and closes the wave row (TRA-1575)."
     ),
     "parameters": {
         "type": "object",
@@ -251,6 +252,14 @@ COMPANY_DISPATCH_TASK_SCHEMA: dict[str, Any] = {
                 "description": (
                     "Record task result: {status: done|done_with_concerns|blocked, "
                     "summary: string, files_created: list, commit_sha: string (optional)}"
+                ),
+            },
+            "review_verdict": {
+                "type": "object",
+                "description": (
+                    "Record task reviewer verdict (TRA-1575): "
+                    "{verdict: APPROVED|CHANGES_REQUESTED, summary: string, findings: list}. "
+                    "Closes the task_reviewer wave row and, if all waves done, auto-closes the session."
                 ),
             },
         },
@@ -476,17 +485,84 @@ def _handle_company_dispatch_task(args: dict, **kw) -> str:
 
         result_data = args.get("result")
 
-        if result_data:
-            # Record implementation result → return task_reviewer prompt
-            status = str(result_data.get("status") or "done").strip()
-            if status not in ("done", "done_with_concerns", "blocked"):
-                return tool_error("result.status must be 'done', 'done_with_concerns', or 'blocked'")
+        # TRA-1575: review_verdict — CEO records the task_reviewer's verdict.
+        # This closes the task_reviewer's wave row (complete_wave) AND records
+        # the verdict in the task row (complete_task_review). Without this,
+        # the CEO had to separately call company_dispatch with result, which
+        # was never documented in the SKILL and always got skipped.
+        review_verdict = args.get("review_verdict")
+        if review_verdict:
+            verdict = str(review_verdict.get("verdict") or "").strip().upper()
+            if verdict not in ("APPROVED", "CHANGES_REQUESTED"):
+                return tool_error("review_verdict.verdict must be 'APPROVED' or 'CHANGES_REQUESTED'")
 
+            findings = review_verdict.get("findings", [])
+            summary = str(review_verdict.get("summary") or "")
+
+            # Record verdict in task row
+            task_mgr.complete_task_review(session_id, task_index, verdict, findings)
+
+            # Close the task_reviewer wave row
+            session_mgr.complete_wave(
+                session_id, 3, "task_reviewer",
+                summary=f"{verdict}: {summary}",
+                files_created=[],
+                status="completed",
+            )
+
+            # Check if all waves done → close session
+            all_waves = session_mgr.get_all_waves(session_id)
+            all_done = all(
+                w["status"] in ("completed", "failed") for w in all_waves
+            )
+            response: dict[str, Any] = {
+                "action": "record_review_verdict",
+                "session_id": session_id,
+                "task_index": task_index,
+                "verdict": verdict,
+                "task_reviewer_wave_closed": True,
+            }
+            if all_done:
+                has_failures = any(w["status"] == "failed" for w in all_waves)
+                final_status = "completed_with_failures" if has_failures else "completed"
+                session_mgr.update_session_status(session_id, final_status)
+                response["session_closed"] = True
+                response["session_status"] = final_status
+
+            return tool_result(response)
+
+        if result_data:
+            # --- TRA-1575: Wave lifecycle management ---
+            # When recording the implementer result, also close the
+            # implementer's wave row and start the task_reviewer's wave row.
+            # Previously company_dispatch_task never called start_wave/
+            # complete_wave, leaving task_reviewer stuck in "running" forever.
+            wave_status = "completed"
+            impl_status = str(result_data.get("status") or "done").strip()
+            if impl_status not in ("done", "done_with_concerns", "blocked"):
+                return tool_error("result.status must be 'done', 'done_with_concerns', or 'blocked'")
+            if impl_status == "blocked":
+                wave_status = "failed"
+
+            # Close implementer wave row (start_wave is idempotent —
+            # only updates rows still in 'pending')
+            session_mgr.start_wave(session_id, 3, "implementer")
+            session_mgr.complete_wave(
+                session_id, 3, "implementer",
+                summary=str(result_data.get("summary") or ""),
+                files_created=result_data.get("files_created", []),
+                status=wave_status,
+            )
+
+            # Record implementation result → return task_reviewer prompt
             task_mgr.complete_task(session_id, task_index, {
                 "summary": str(result_data.get("summary") or ""),
                 "files_created": result_data.get("files_created", []),
                 "commit_sha": str(result_data.get("commit_sha") or ""),
             })
+
+            # Start task_reviewer wave row
+            session_mgr.start_wave(session_id, 3, "task_reviewer")
 
             # Build task_reviewer context
             ctx_store = ContextStore(session_mgr.conn)
@@ -527,7 +603,9 @@ def _handle_company_dispatch_task(args: dict, **kw) -> str:
                 },
             })
         else:
-            # Dispatch implementer
+            # Dispatch implementer — start the implementer wave row (TRA-1575)
+            session_mgr.start_wave(session_id, 3, "implementer")
+
             task_mgr.start_task(session_id, task_index)
 
             # Build implementer context with just this task's info
